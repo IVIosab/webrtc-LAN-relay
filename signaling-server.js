@@ -113,18 +113,22 @@ io.sockets.on('connection', function (socket) {
         }
 
         // delete the IP from IPtoDevices if no device is connected, otherwise check if the leader left and set a new leader
-        if (IPtoDevices[DevicetoIP[socket.id]].length === 0) {
-            delete IPtoLeader[DevicetoIP[socket.id]];
-            delete IPtoDevices[DevicetoIP[socket.id]];
-        }
-        else {
-            if (IPtoLeader[DevicetoIP[socket.id]] === socket.id) {
-                IPtoLeader[DevicetoIP[socket.id]] = IPtoDevices[DevicetoIP[socket.id]][0];
+        if (IPtoDevices[DevicetoIP[socket.id]]) {
+            if (IPtoDevices[DevicetoIP[socket.id]].length === 0) {
+                delete IPtoLeader[DevicetoIP[socket.id]];
+                delete IPtoDevices[DevicetoIP[socket.id]];
+            }
+            else {
+                if (IPtoLeader[DevicetoIP[socket.id]] === socket.id) {
+                    IPtoLeader[DevicetoIP[socket.id]] = IPtoDevices[DevicetoIP[socket.id]][0];
+                }
             }
         }
 
         // delete the IP from DevicetoIP
-        delete DevicetoIP[socket.id];
+        if (DevicetoIP[socket.id]) {
+            delete DevicetoIP[socket.id];
+        }
 
         for (id in channels[channel]) {
             channels[channel][id].emit('removePeer', { 'peer_id': socket.id });
