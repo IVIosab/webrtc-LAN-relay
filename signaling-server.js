@@ -45,6 +45,9 @@ var sockets = {};
 var IPtoDevices = {};
 var IPtoLeader = {};
 var DevicetoIP = {};
+var Conns = {};
+var initID = "";
+
 
 /**
  * Users will connect to the signaling server, after which they'll issue a "join"
@@ -71,6 +74,9 @@ io.sockets.on('connection', function (socket) {
 
 
     socket.on('join', function (config) {
+        if (initID === "") {
+            initID = socket.id;
+        }
         console.log("[" + socket.id + "] join ", config);
         var channel = config.channel;
         var userdata = config.userdata;
@@ -84,10 +90,37 @@ io.sockets.on('connection', function (socket) {
             channels[channel] = {};
         }
 
-        for (id in channels[channel]) {
-            channels[channel][id].emit('addPeer', { 'peer_id': socket.id, 'should_create_offer': false });
-            socket.emit('addPeer', { 'peer_id': id, 'should_create_offer': true });
+        // Connect ot initID if you're not initID
+        if (socket.id !== initID) {
+            console.log("Connecting with Init Node...")
+            socket.emit('addPeer', { 'peer_id': initID, 'should_create_offer': true });
+            channels[channel][initID].emit('addPeer', { 'peer_id': socket.id, 'should_create_offer': false });
+            if (!(socket.id in Conns)) {
+                Conns[socket.id] = {};
+            }
+            if (!(initID in Conns)) {
+                Conns[initID] = {};
+            }
+            Conns[socket.id][initID] = true;
+            Conns[initID][socket.id] = true;
+            console.log(Conns);
+            console.log("Connected to Init Node!")
         }
+
+        // for (id in channels[channel]) {
+        //     // check if it is in the same LAN
+        //     console.log(DevicetoIP[id], DevicetoIP[socket.id]);
+        //     if (DevicetoIP[id] === DevicetoIP[socket.id] && DevicetoIP[id] !== undefined && DevicetoIP[socket.id] !== undefined && id !== initID) {
+        //         console.log("in");
+        //         channels[channel][id].emit('addPeer', { 'peer_id': socket.id, 'should_create_offer': true });
+        //         Conns[socket.id][id] = true;
+        //         Conns[id][socket.id] = true;
+        //         console.log(Conns);
+        //         socket.emit('addPeer', { 'peer_id': id, 'should_create_offer': false });
+        //     }
+        //     // channels[channel][id].emit('addPeer', { 'peer_id': socket.id, 'should_create_offer': false });
+        //     // socket.emit('addPeer', { 'peer_id': id, 'should_create_offer': true });
+        // }
 
         channels[channel][socket.id] = socket;
         socket.channels[channel] = channel;
@@ -159,6 +192,30 @@ io.sockets.on('connection', function (socket) {
         console.log("IP to Devices:", IPtoDevices);
         console.log("IP to Leader:", IPtoLeader);
         console.log("Device to IP:", DevicetoIP);
+        //check if all devices under one IP are connected with each other by checking Conns, if not, connect them
+        var channel = "some-global-channel-name";
+        if (IPtoDevices[DevicetoIP[socket.id]]) {
+            if (IPtoDevices[DevicetoIP[socket.id]].length > 1) {
+                var devices = IPtoDevices[DevicetoIP[socket.id]];
+                for (var i = 0; i < devices.length; i++) {
+                    if (!(devices[i] in Conns)) {
+                        Conns[devices[i]] = {};
+                    }
+                    for (var j = i + 1; j < devices.length; j++) {
+                        if (!(devices[j] in Conns)) {
+                            Conns[devices[j]] = {};
+                        }
+                        if (!Conns[devices[i]][devices[j]]) {
+                            channels[channel][devices[i]].emit('addPeer', { 'peer_id': devices[j], 'should_create_offer': true });
+                            channels[channel][devices[j]].emit('addPeer', { 'peer_id': devices[i], 'should_create_offer': false });
+                            Conns[devices[i]][devices[j]] = true;
+                            Conns[devices[j]][devices[i]] = true;
+                        }
+                    }
+                }
+            }
+        }
+
         if (peer_id in sockets) {
             sockets[peer_id].emit('iceCandidate', { 'peer_id': socket.id, 'ice_candidate': ice_candidate });
         }
