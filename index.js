@@ -1,108 +1,137 @@
 /** CONFIG **/
-var SIGNALING_SERVER = `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ''}`;
-var ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-var signaling_socket = null;
-var local_media_stream = null;
-var peers = {};
-var peer_media_elements = {};
+const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${location.port ? `:${location.port}` : ''}`;
+const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+
+let signalingSocket = null;
+let localMediaStream = null;
+let peers = {};
+let peerMediaElements = {};
 
 function init() {
-    signaling_socket = io(SIGNALING_SERVER);
+    setupSignalingSocket();
+    setupLocalMedia(joinGlobalChat);
+}
 
-    signaling_socket.on('connect', () => {
+function setupSignalingSocket() {
+    signalingSocket = io(SIGNALING_SERVER);
+
+    signalingSocket.on('connect', () => {
         console.log("Connected to signaling server");
-        setup_local_media(() => join_chat_channel('some-global-channel-name', {}));
-    });
-    signaling_socket.on('disconnect', () => {
-        Object.values(peer_media_elements).forEach(media => document.body.removeChild(media));
-        Object.values(peers).forEach(peer => peer.close());
-        peers = {};
-        peer_media_elements = {};
     });
 
-    function join_chat_channel(channel, userdata) {
-        signaling_socket.emit('join', { channel, userdata });
+    signalingSocket.on('disconnect', clearPeers);
+
+    signalingSocket.on('addPeer', configurePeerConnection);
+    signalingSocket.on('sessionDescription', handleSessionDescription);
+    signalingSocket.on('iceCandidate', handleIceCandidate);
+    signalingSocket.on('removePeer', removePeer);
+}
+
+function joinGlobalChat() {
+    joinChatChannel('some-global-channel-name', {});
+}
+
+function joinChatChannel(channel, userdata) {
+    signalingSocket.emit('join', { channel, userdata });
+}
+
+function configurePeerConnection(config) {
+    let peer_id = config.peer_id;
+    if (peer_id in peers) return;
+
+    let peer_connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    peers[peer_id] = peer_connection;
+
+    peer_connection.onicecandidate = event => {
+        if (event.candidate) {
+            signalingSocket.emit('relayICECandidate', {
+                peer_id,
+                ice_candidate: event.candidate
+            });
+        }
+    };
+
+    peer_connection.ontrack = event => {
+        handleTrackEvent(peer_id, event);
+    };
+
+    localMediaStream.getTracks().forEach(track => {
+        peer_connection.addTrack(track, localMediaStream);
+    });
+
+    if (config.should_create_offer) {
+        createAndSendOffer(peer_id, peer_connection);
     }
+}
 
-    signaling_socket.on('addPeer', config => {
-        var peer_id = config.peer_id;
-        if (peer_id in peers) return;
-        var peer_connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        peers[peer_id] = peer_connection;
+function handleTrackEvent(peer_id, event) {
+    if (event.track.kind !== "video") return;
 
-        peer_connection.onicecandidate = event => {
-            if (event.candidate) {
-                signaling_socket.emit('relayICECandidate', {
-                    peer_id,
-                    ice_candidate: event.candidate
-                });
-            }
-        };
+    let remote_media = createMediaElement();
+    attachMediaStream(remote_media, event.streams[0]);
+    peerMediaElements[peer_id] = remote_media;
+    console.log("Got Track for " + peer_id);
+    addStreamToPeers(event.streams[0]);
+}
 
-        peer_connection.ontrack = event => {
-            if (peer_media_elements[peer_id]) return;
-            var remote_media = document.createElement("video");
-            remote_media.autoplay = true;
-            remote_media.controls = true;
-            remote_media.muted = false;
-            document.body.appendChild(remote_media);
-            attachMediaStream(remote_media, event.streams[0]);
-            peer_media_elements[peer_id] = remote_media;
-        };
+function createAndSendOffer(peer_id, peer_connection) {
+    peer_connection.createOffer().then(local_description => {
+        peer_connection.setLocalDescription(local_description).then(() => {
+            signalingSocket.emit('relaySessionDescription', {
+                peer_id,
+                session_description: local_description
+            });
+        });
+    });
+}
 
-        // TODO use addTrack instead of addStream
-        peer_connection.addStream(local_media_stream);
+function handleSessionDescription(config) {
+    let peer_id = config.peer_id;
+    let desc = new RTCSessionDescription(config.session_description);
 
-        if (config.should_create_offer) {
-            peer_connection.createOffer().then(local_description => {
-                peer_connection.setLocalDescription(local_description).then(() => {
-                    signaling_socket.emit('relaySessionDescription', { peer_id, session_description: local_description });
+    peers[peer_id].setRemoteDescription(desc).then(() => {
+        if (desc.type == "offer") {
+            peers[peer_id].createAnswer().then(local_description => {
+                peers[peer_id].setLocalDescription(local_description).then(() => {
+                    signalingSocket.emit('relaySessionDescription', {
+                        peer_id,
+                        session_description: local_description
+                    });
                 });
             });
         }
     });
-
-    signaling_socket.on('sessionDescription', config => {
-        var peer_id = config.peer_id;
-        var desc = new RTCSessionDescription(config.session_description);
-        peers[peer_id].setRemoteDescription(desc).then(() => {
-            if (desc.type == "offer") {
-                peers[peer_id].createAnswer().then(local_description => {
-                    peers[peer_id].setLocalDescription(local_description).then(() => {
-                        signaling_socket.emit('relaySessionDescription', { peer_id, session_description: local_description });
-                    });
-                });
-            }
-        });
-    });
-
-    signaling_socket.on('iceCandidate', config => {
-        peers[config.peer_id].addIceCandidate(new RTCIceCandidate(config.ice_candidate));
-    });
-
-    signaling_socket.on('removePeer', config => {
-        var peer_id = config.peer_id;
-        if (peer_media_elements[peer_id]) {
-            document.body.removeChild(peer_media_elements[peer_id]);
-            delete peer_media_elements[peer_id];
-        }
-        if (peers[peer_id]) {
-            peers[peer_id].close();
-            delete peers[peer_id];
-        }
-    });
 }
 
-function setup_local_media(callback) {
-    if (local_media_stream) return callback();
+function handleIceCandidate(config) {
+    peers[config.peer_id].addIceCandidate(new RTCIceCandidate(config.ice_candidate));
+}
+
+function removePeer(config) {
+    let peer_id = config.peer_id;
+    if (peerMediaElements[peer_id]) {
+        document.body.removeChild(peerMediaElements[peer_id]);
+        delete peerMediaElements[peer_id];
+    }
+    if (peers[peer_id]) {
+        peers[peer_id].close();
+        delete peers[peer_id];
+    }
+}
+
+function clearPeers() {
+    Object.values(peerMediaElements).forEach(media => document.body.removeChild(media));
+    Object.values(peers).forEach(peer => peer.close());
+    peers = {};
+    peerMediaElements = {};
+}
+
+function setupLocalMedia(callback) {
+    if (localMediaStream) return callback();
     navigator.mediaDevices.getUserMedia({ audio: true, video: true })
         .then(stream => {
-            local_media_stream = stream;
-            var local_media = document.createElement("video");
-            local_media.autoplay = true;
-            local_media.muted = true;
-            local_media.controls = true;
-            document.body.appendChild(local_media);
+            localMediaStream = stream;
+            let local_media = createMediaElement();
             attachMediaStream(local_media, stream);
             callback();
         }).catch(() => {
@@ -110,8 +139,25 @@ function setup_local_media(callback) {
         });
 }
 
+function createMediaElement() {
+    let mediaElement = document.createElement("video");
+    mediaElement.autoplay = true;
+    mediaElement.muted = true;
+    mediaElement.controls = true;
+    document.body.appendChild(mediaElement);
+    return mediaElement;
+}
+
 function attachMediaStream(element, stream) {
     element.srcObject = stream;
+}
+
+function addStreamToPeers(stream) {
+    Object.keys(peers).forEach(peer_id => {
+        stream.getTracks().forEach(track => {
+            peers[peer_id].addTrack(track, stream);
+        });
+    });
 }
 
 init(); // Start the initialization process
