@@ -65,13 +65,15 @@ function configurePeerConnection(config) {
 }
 
 function handleTrackEvent(peer_id, event) {
+    console.log("[handleTrackEvent] - IN");
     if (event.track.kind !== "video") return;
+    console.log("[handleTrackEvent] - Video Track");
 
     let remote_media = createMediaElement();
     attachMediaStream(remote_media, event.streams[0]);
     peerMediaElements[peer_id] = remote_media;
     console.log("Got Track for " + peer_id);
-    addStreamToPeers(event.streams[0]);
+    addStreamToPeers(event.streams[0], peer_id);
 }
 
 function createAndSendOffer(peer_id, peer_connection) {
@@ -152,11 +154,16 @@ function attachMediaStream(element, stream) {
     element.srcObject = stream;
 }
 
-function addStreamToPeers(stream) {
+function addStreamToPeers(stream, ignorePeer) {
+    // Iterate over each peer in the peers object
     Object.keys(peers).forEach(peer_id => {
-        stream.getTracks().forEach(track => {
-            peers[peer_id].addTrack(track, stream);
-        });
+        // Check if the current peer is not the one to ignore
+        if (peer_id !== ignorePeer) {
+            // Get the tracks from the stream and add them to the peer connection
+            stream.getTracks().forEach(track => {
+                peers[peer_id].addTrack(track, stream);
+            });
+        }
     });
 }
 
