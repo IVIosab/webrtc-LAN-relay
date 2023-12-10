@@ -4,12 +4,14 @@ const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
 let signalingSocket = null;
 let localMediaStream = null;
+let localDisplayMediaStream = null;
 let peers = {};
 let peerMediaElements = {};
+let t = 0;
 
 function init() {
-    setupSignalingSocket();
     setupLocalMedia(joinGlobalChat);
+    setupSignalingSocket();
 }
 
 function setupSignalingSocket() {
@@ -43,6 +45,7 @@ function configurePeerConnection(config) {
     peers[peer_id] = peer_connection;
 
     peer_connection.onicecandidate = event => {
+        console.log("EVENT: Ice candidate");
         if (event.candidate) {
             signalingSocket.emit('relayICECandidate', {
                 peer_id,
@@ -51,7 +54,35 @@ function configurePeerConnection(config) {
         }
     };
 
+    peer_connection.onicegatheringstatechange = event => {
+        let connection = event.target;
+        switch (connection.iceGatheringState) {
+          case "gathering":
+            console.log("EVENT: ICE gathering state changed: gathering");
+            break;
+          case "complete":
+            console.log("EVENT: ICE gathering state changed: complete");
+            if(localDisplayMediaStream){
+                addStreamToPeers(localDisplayMediaStream);
+            }
+            break;
+        }
+      };
+
+    peer_connection.onnegotiationneeded = event => {
+        console.log("EVENT: Negotiation needed");
+        console.log(event);
+        if(t===0){
+            t=1;
+        }
+        else{
+            createAndSendOffer(peer_id, peer_connection);
+        }
+    };
+    
+
     peer_connection.ontrack = event => {
+        console.log("EVENT: Ontrack");
         handleTrackEvent(peer_id, event);
     };
 
@@ -73,7 +104,6 @@ function handleTrackEvent(peer_id, event) {
     attachMediaStream(remote_media, event.streams[0]);
     peerMediaElements[peer_id] = remote_media;
     console.log("Got Track for " + peer_id);
-    addStreamToPeers(event.streams[0], peer_id);
 }
 
 function createAndSendOffer(peer_id, peer_connection) {
@@ -128,16 +158,24 @@ function clearPeers() {
     peerMediaElements = {};
 }
 
-function setupLocalMedia(callback) {
+async function setupLocalMedia(callback) {
     if (localMediaStream) return callback();
-    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+    await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
         .then(stream => {
             localMediaStream = stream;
             let local_media = createMediaElement();
             attachMediaStream(local_media, stream);
             callback();
-        }).catch(() => {
-            alert("Access to camera/microphone denied. Demo will not work.");
+        }).catch(err => {
+            console.log("Error getting user media");
+            console.log(err);
+        });        
+    await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
+        .then(stream => {
+            localDisplayMediaStream = stream;
+        }).catch(err => {
+            console.log("Error getting display media");
+            console.log(err);
         });
 }
 
@@ -154,17 +192,18 @@ function attachMediaStream(element, stream) {
     element.srcObject = stream;
 }
 
-function addStreamToPeers(stream, ignorePeer) {
-    // Iterate over each peer in the peers object
+// this function is called with a stream and its job is to add it to all the peer connections and renegotiate
+function addStreamToPeers(stream) {
+    console.log("Adding stream to peers");
     Object.keys(peers).forEach(peer_id => {
-        // Check if the current peer is not the one to ignore
-        if (peer_id !== ignorePeer) {
-            // Get the tracks from the stream and add them to the peer connection
-            stream.getTracks().forEach(track => {
-                peers[peer_id].addTrack(track, stream);
-            });
-        }
+        let peer_connection = peers[peer_id];
+        stream.getTracks().forEach(track => {
+            peer_connection.addTrack(track, stream);
+        });
     });
 }
+
+
+
 
 init(); // Start the initialization process
