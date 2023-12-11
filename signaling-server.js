@@ -147,12 +147,27 @@ function updateIPMappingsOnICECandidate(socket, ice_candidate) {
 }
 
 function checkAndConnectDevicesUnderSameIP(ip) {
-    if (ipToDevices[ip].length <= 1) return;
+    if (ipToDevices[ip].length <= 1){
+        checkAndConnectLeaderDevices();
+        return;
+    } 
 
     ipToDevices[ip].forEach(deviceId => {
         ipToDevices[ip].forEach(otherDeviceId => {
             if (deviceId !== otherDeviceId && !isConnected(deviceId, otherDeviceId)) {
                 createPeerConnection(sockets[deviceId], otherDeviceId, "some-global-channel-name", true);
+            }
+        });
+    });
+}
+
+function checkAndConnectLeaderDevices() {
+    Object.keys(ipToLeader).forEach(ip => {
+        const leaderId = ipToLeader[ip];
+        Object.keys(ipToLeader).forEach(otherIp => {
+            const otherLeaderId = ipToLeader[otherIp];
+            if (ip !== otherIp && !isConnected(leaderId, otherLeaderId)) {
+                createPeerConnection(sockets[leaderId], otherLeaderId, "some-global-channel-name", true);
             }
         });
     });
