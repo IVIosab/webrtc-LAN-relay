@@ -24,7 +24,6 @@ const io = socketIO.listen(server);
 /*** STORAGE ***/
 /***************/
 const CHANNEL = "global";
-let channels = {};
 let sockets = {};
 let ipToDevices = {};
 let ipToLeader = {};
@@ -46,7 +45,6 @@ server.listen(PORT, () =>
 io.sockets.on("connection", (socket) => {
   console.log(`[${socket.id}] connection accepted`);
   sockets[socket.id] = socket;
-  socket.channels = {};
 
   socket.on("disconnect", () => handleDisconnect(socket));
   socket.on("join", () => handleJoin(socket));
@@ -59,9 +57,8 @@ io.sockets.on("connection", (socket) => {
 });
 
 function handleDisconnect(socket) {
-  Object.keys(socket.channels).forEach((channel) => {
-    partChannel(channel, socket);
-  });
+  partChannel(socket);
+
   console.log(`[${socket.id}] disconnected`);
   delete sockets[socket.id];
 }
@@ -72,28 +69,15 @@ function handleJoin(socket) {
   }
 
   console.log(`[${socket.id}] joined "${CHANNEL}" chat`);
-  if (!(CHANNEL in channels)) {
-    channels[CHANNEL] = {};
-  }
-
-  channels[CHANNEL][socket.id] = socket;
-  socket.channels[CHANNEL] = CHANNEL;
 
   if (socket.id !== initID) {
-    createPeerConnection(socket, initID, CHANNEL, true);
+    createPeerConnection(socket, initID, true);
   }
 }
 
-function partChannel(channel, socket) {
+function partChannel(socket) {
   console.log(`[${socket.id}] part`);
 
-  if (!(channel in socket.channels)) {
-    console.log(`[${socket.id}] ERROR: not in ${channel}`);
-    return;
-  }
-
-  delete socket.channels[channel];
-  delete channels[channel][socket.id];
   updateIPMappingsOnPart(socket);
 }
 
@@ -123,16 +107,13 @@ function handleSessionDescription(socket, config) {
   }
 }
 
-function createPeerConnection(socket, peerId, channel, shouldCreateOffer) {
+function createPeerConnection(socket, peerId, shouldCreateOffer) {
   console.log(`Connecting ${socket.id} with ${peerId}`);
   socket.emit("addPeer", {
     peer_id: peerId,
     should_create_offer: shouldCreateOffer,
   });
-  console.log(channels);
-  console.log(channel);
-  console.log(peerId);
-  channels[channel][peerId].emit("addPeer", {
+  sockets[peerId].emit("addPeer", {
     peer_id: socket.id,
     should_create_offer: !shouldCreateOffer,
   });
