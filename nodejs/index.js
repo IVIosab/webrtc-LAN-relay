@@ -2,18 +2,21 @@
 const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${
   location.port ? `:${location.port}` : ""
 }`;
+const CHANNEL = "global";
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
 let signalingSocket = null;
 let localMediaStream = null;
 let localDisplayMediaStream = null;
+
 let peers = {};
 let peerMediaElements = {};
-let t = 0;
+
+let a7a = 0;
 
 function init() {
   setupSignalingSocket();
-  setupLocalMedia(joinChatChannel("global-chat", {}));
+  setupLocalMedia(joinChannel);
 }
 
 function setupSignalingSocket() {
@@ -30,8 +33,8 @@ function setupSignalingSocket() {
   signalingSocket.on("removePeer", removePeer);
 }
 
-function joinChatChannel(channel, userdata) {
-  signalingSocket.emit("join", { channel, userdata });
+function joinChannel() {
+  signalingSocket.emit("join", CHANNEL);
 }
 
 function configurePeerConnection(config) {
@@ -71,8 +74,8 @@ function configurePeerConnection(config) {
   peer_connection.onnegotiationneeded = (event) => {
     console.log("EVENT: Negotiation needed");
     console.log(event);
-    if (t === 0) {
-      t = 1;
+    if (a7a === 0) {
+      a7a = 1;
     } else {
       createAndSendOffer(peer_id, peer_connection);
     }
@@ -170,18 +173,18 @@ async function setupLocalMedia(callback) {
       callback();
     })
     .catch((err) => {
-      console.log("Error getting user media");
+      console.log("Error getting local media");
       console.log(err);
     });
-  await navigator.mediaDevices
-    .getDisplayMedia({ audio: true, video: true })
-    .then((stream) => {
-      localDisplayMediaStream = stream;
-    })
-    .catch((err) => {
-      console.log("Error getting display media");
-      console.log(err);
-    });
+  // await navigator.mediaDevices
+  //   .getDisplayMedia({ audio: true, video: true })
+  //   .then((stream) => {
+  //     localDisplayMediaStream = stream;
+  //   })
+  //   .catch((err) => {
+  //     console.log("Error getting display media");
+  //     console.log(err);
+  //   });
 }
 
 function createMediaElement() {
