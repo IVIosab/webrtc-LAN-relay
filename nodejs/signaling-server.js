@@ -23,6 +23,7 @@ const io = socketIO.listen(server);
 /***************/
 /*** STORAGE ***/
 /***************/
+const CHANNEL = "global";
 let channels = {};
 let sockets = {};
 let ipToDevices = {};
@@ -36,7 +37,9 @@ let initID = "";
 /***************/
 server.listen(PORT, () =>
   console.log(
-    `Listening on port ${PORT}\nExecute the following command in another terminal:\n\tngrok http https://127.0.0.1:${PORT}`
+    `Listening on port ${PORT}
+    Execute the following command in another terminal:
+    \tngrok http https://127.0.0.1:${PORT}`
   )
 );
 
@@ -46,7 +49,7 @@ io.sockets.on("connection", (socket) => {
   socket.channels = {};
 
   socket.on("disconnect", () => handleDisconnect(socket));
-  socket.on("join", (config) => handleJoin(socket, config));
+  socket.on("join", () => handleJoin(socket));
   socket.on("relayICECandidate", (config) =>
     handleIceCandidate(socket, config)
   );
@@ -63,24 +66,21 @@ function handleDisconnect(socket) {
   delete sockets[socket.id];
 }
 
-function handleJoin(socket, config) {
-  const { channel } = config;
-
+function handleJoin(socket) {
   if (initID === "") {
     initID = socket.id;
   }
 
-  console.log(`[${socket.id}] join `, config);
-
-  if (!(channel in channels)) {
-    channels[channel] = {};
+  console.log(`[${socket.id}] joined "${CHANNEL}" chat`);
+  if (!(CHANNEL in channels)) {
+    channels[CHANNEL] = {};
   }
 
-  channels[channel][socket.id] = socket;
-  socket.channels[channel] = channel;
+  channels[CHANNEL][socket.id] = socket;
+  socket.channels[CHANNEL] = CHANNEL;
 
   if (socket.id !== initID) {
-    createPeerConnection(socket, initID, channel, true);
+    createPeerConnection(socket, initID, CHANNEL, true);
   }
 }
 
@@ -129,6 +129,9 @@ function createPeerConnection(socket, peerId, channel, shouldCreateOffer) {
     peer_id: peerId,
     should_create_offer: shouldCreateOffer,
   });
+  console.log(channels);
+  console.log(channel);
+  console.log(peerId);
   channels[channel][peerId].emit("addPeer", {
     peer_id: socket.id,
     should_create_offer: !shouldCreateOffer,
@@ -175,12 +178,7 @@ function checkAndConnectDevicesUnderSameIP(ip) {
   ipToDevices[ip].forEach((deviceId) => {
     ipToDevices[ip].forEach((otherDeviceId) => {
       if (deviceId !== otherDeviceId && !isConnected(deviceId, otherDeviceId)) {
-        createPeerConnection(
-          sockets[deviceId],
-          otherDeviceId,
-          "some-global-channel-name",
-          true
-        );
+        createPeerConnection(sockets[deviceId], otherDeviceId, CHANNEL, true);
       }
     });
   });
@@ -192,12 +190,7 @@ function checkAndConnectLeaderDevices() {
     Object.keys(ipToLeader).forEach((otherIp) => {
       const otherLeaderId = ipToLeader[otherIp];
       if (ip !== otherIp && !isConnected(leaderId, otherLeaderId)) {
-        createPeerConnection(
-          sockets[leaderId],
-          otherLeaderId,
-          "some-global-channel-name",
-          true
-        );
+        createPeerConnection(sockets[leaderId], otherLeaderId, CHANNEL, true);
       }
     });
   });
