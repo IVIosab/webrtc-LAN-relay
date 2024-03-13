@@ -1,4 +1,4 @@
-# Nodejs Version
+# Python Version
 
 ## Usage 
 ```shell
@@ -16,8 +16,5 @@ ngrok http https://127.0.0.1:8080
 ## Implementation 
 
 ### Tech stack
-- [Nodejs](https://nodejs.org/en)
-- [Express](https://expressjs.com/)
-- [SocketIO](https://socket.io/)
 
 ## Testing

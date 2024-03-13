@@ -30,14 +30,6 @@ After we apply the proposed algorithm,
 - Two sites exchange only four streams in total.
 ![Modified P2P architecture](imgs/3.jpg)
 
-## Design
-
-## Implementation 
-
-### Tech stack
-
-## Testing
-
 ## Results
 
 ## Conclusion 
