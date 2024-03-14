@@ -7,6 +7,7 @@ const socketIO = require("socket.io");
 /*** CONFIG ***/
 /**************/
 const PORT = 8080;
+const CHANNEL = "global";
 const credentials = {
   key: fs.readFileSync("ssl/server-key.pem", "utf8"),
   cert: fs.readFileSync("ssl/server-cert.pem", "utf8"),
@@ -23,7 +24,6 @@ const io = socketIO.listen(server);
 /***************/
 /*** STORAGE ***/
 /***************/
-const CHANNEL = "global";
 let id = 1;
 let firstNodeID = "";
 
@@ -36,9 +36,9 @@ let peerToIP = {};
 let ipToPeers = {}; // key: IP, value: list of peers with that IP
 let ipToLeader = {}; // key: IP, value: the elected leader of the IP group
 
-/***************/
+/**************/
 /*** SERVER ***/
-/***************/
+/**************/
 server.listen(PORT, () =>
   console.log(
     `Listening on port ${PORT}
@@ -71,6 +71,7 @@ io.sockets.on("connection", (socket) => {
  * -
  */
 function handleJoin(socket) {
+  logIpInfo();
   console.log(`${peerToOrder[socket.id]} joined "${CHANNEL}" chat`);
 
   if (firstNodeID === "") {
@@ -246,4 +247,16 @@ function removePeerIP(socket) {
   }
 
   delete peerToIP[socket.id];
+}
+
+function logIpInfo() {
+  console.log("\n\n");
+  const IPs = Object.keys(ipToPeers);
+  for (let i = 0; i < IPs.length; i++) {
+    console.log(`\t${IPs[i]}: `);
+    for (let j = 0; j < ipToPeers[IPs[i]].length; j++) {
+      console.log(`\t\t${peerToOrder[ipToPeers[IPs[i]][j]]}`);
+    }
+  }
+  console.log("\n\n");
 }
