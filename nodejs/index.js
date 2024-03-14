@@ -1,19 +1,26 @@
-/** CONFIG **/
+/**************/
+/*** CONFIG ***/
+/**************/
 const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${
   location.port ? `:${location.port}` : ""
 }`;
-const CHANNEL = "global";
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const CHANNEL = "global";
 
+/***************/
+/*** STORAGE ***/
+/***************/
 let signalingSocket = null;
 let localMediaStream = null;
-let localDisplayMediaStream = null;
 
 let peers = {};
 let peerMediaElements = {};
 
-let a7a = 0;
+let initialNegotiation = true;
 
+/**************/
+/*** Client ***/
+/**************/
 function init() {
   setupSignalingSocket();
   setupLocalMedia(joinChannel);
@@ -24,97 +31,52 @@ function setupSignalingSocket() {
   signalingSocket.on("connect", () => {
     console.log("Connected to signaling server");
   });
-
-  signalingSocket.on("disconnect", clearPeers);
-
-  signalingSocket.on("addPeer", configurePeerConnection);
+  signalingSocket.on("addPeer", handleAddPeer);
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
-  signalingSocket.on("removePeer", removePeer);
+  signalingSocket.on("removePeer", handleRemovePeer);
+  signalingSocket.on("disconnect", handleDisconnect);
 }
 
-function joinChannel() {
-  signalingSocket.emit("join", CHANNEL);
-}
-
-function configurePeerConnection(config) {
+function handleAddPeer(config) {
   let peer_id = config.peer_id;
   if (peer_id in peers) return;
+  console.debug(`DEBUG: peer_id: ${peer_id}`);
 
-  let peer_connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  peers[peer_id] = peer_connection;
+  console.group("Logic: Initializing RTCPeerConnection");
+  let peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  peers[peer_id] = peerConnection;
+  console.groupEnd();
 
-  peer_connection.onicecandidate = (event) => {
-    console.log("EVENT: Ice candidate");
-    if (event.candidate) {
-      signalingSocket.emit("relayICECandidate", {
-        peer_id,
-        ice_candidate: event.candidate,
-      });
-    } else {
-      console.log("EVENT: Ice candidate - No candidate");
-    }
-  };
-
-  peer_connection.onicegatheringstatechange = (event) => {
-    let connection = event.target;
-    switch (connection.iceGatheringState) {
-      case "gathering":
-        console.log("EVENT: ICE gathering state changed: gathering");
-        break;
-      case "complete":
-        console.log("EVENT: ICE gathering state changed: complete");
-        if (localDisplayMediaStream) {
-          addStreamToPeers(localDisplayMediaStream);
-        }
-        break;
-    }
-  };
-
-  peer_connection.onnegotiationneeded = (event) => {
-    console.log("EVENT: Negotiation needed");
-    console.log(event);
-    if (a7a === 0) {
-      a7a = 1;
-    } else {
-      createAndSendOffer(peer_id, peer_connection);
-    }
-  };
-
-  peer_connection.ontrack = (event) => {
-    console.log("EVENT: Ontrack");
-    handleTrackEvent(peer_id, event);
-  };
-
+  console.group("Logic: Adding my stream to peer connections");
   localMediaStream.getTracks().forEach((track) => {
-    peer_connection.addTrack(track, localMediaStream);
+    peerConnection.addTrack(track, localMediaStream);
   });
+  console.groupEnd();
 
-  if (config.should_create_offer) {
-    createAndSendOffer(peer_id, peer_connection);
-  }
-}
+  peerConnection.onnegotiationneeded = (event) => {
+    console.group("Event: onnegotiationneeded");
+    handlePeerNegotiation(peer_id, peerConnection, config.should_create_offer);
+    console.groupEnd();
+  };
 
-function handleTrackEvent(peer_id, event) {
-  console.log("[handleTrackEvent] - IN");
-  if (event.track.kind !== "video") return;
-  console.log("[handleTrackEvent] - Video Track");
+  peerConnection.onicecandidate = (event) => {
+    // console.group("Event: onicecandidate");
+    handlePeerIceCandidate(peer_id, event.candidate);
+    // console.groupEnd();
+  };
 
-  let remote_media = createMediaElement();
-  attachMediaStream(remote_media, event.streams[0]);
-  peerMediaElements[peer_id] = remote_media;
-  console.log("Got Track for " + peer_id);
-}
+  peerConnection.onicegatheringstatechange = (event) => {
+    console.group("Event: onicegatheringstatechange");
+    handlePeerIceGathering(event.target.iceGatheringState);
+    console.groupEnd();
+  };
 
-function createAndSendOffer(peer_id, peer_connection) {
-  peer_connection.createOffer().then((local_description) => {
-    peer_connection.setLocalDescription(local_description).then(() => {
-      signalingSocket.emit("relaySessionDescription", {
-        peer_id,
-        session_description: local_description,
-      });
-    });
-  });
+  peerConnection.ontrack = (event) => {
+    console.group("Event: ontrack");
+    handlePeerTrack(peer_id, event);
+    console.groupEnd();
+  };
 }
 
 function handleSessionDescription(config) {
@@ -141,8 +103,11 @@ function handleIceCandidate(config) {
   );
 }
 
-function removePeer(config) {
-  let peer_id = config.peer_id;
+function handleRemovePeer(config) {
+  removePeer(config.peer_id);
+}
+
+function removePeer(peer_id) {
   if (peerMediaElements[peer_id]) {
     document.body.removeChild(peerMediaElements[peer_id]);
     delete peerMediaElements[peer_id];
@@ -153,13 +118,100 @@ function removePeer(config) {
   }
 }
 
-function clearPeers() {
-  Object.values(peerMediaElements).forEach((media) =>
-    document.body.removeChild(media)
-  );
-  Object.values(peers).forEach((peer) => peer.close());
-  peers = {};
-  peerMediaElements = {};
+function handleDisconnect() {
+  removeAllPeers();
+}
+
+function removeAllPeers() {
+  //TODO: consider using a set for IDs
+  let IDs = extractPeers();
+  for (let i = 0; i < IDs.length; i++) {
+    removePeer(IDs[i]);
+  }
+}
+
+function extractPeers() {
+  const mediaIDs = Object.keys(peerMediaElements);
+  const peerIDs = Object.keys(peers);
+  let IDs = [];
+  for (let i = 0; i < mediaIDs.length; i++) {
+    if (!IDs.includes(mediaIDs[i])) {
+      IDs.push(mediaIDs[i]);
+    }
+  }
+  for (let i = 0; i < peerIDs.length; i++) {
+    if (!IDs.includes(peerIDs[i])) {
+      IDs.push(peerIDs[i]);
+    }
+  }
+  return IDs;
+}
+
+function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
+  if (shouldCreateOffer) {
+    createAndSendOffer(peer_id, peerConnection);
+  }
+}
+
+function handlePeerIceCandidate(peer_id, candidate) {
+  if (candidate) {
+    signalingSocket.emit("relayICECandidate", {
+      peer_id,
+      ice_candidate: candidate,
+    });
+  } else {
+    // console.log("EVENT: Ice candidate - No candidate");
+  }
+}
+
+/**
+ * should be used in relaying streams
+ */
+function handlePeerIceGathering(iceGatheringState) {
+  switch (iceGatheringState) {
+    case "gathering":
+      console.debug("Gathering");
+      break;
+    case "complete":
+      console.debug("Complete");
+      //   if (localDisplayMediaStream) {
+      //     addStreamToPeers(localDisplayMediaStream);
+      //   }
+      break;
+  }
+}
+
+function createAndSendOffer(peer_id, peerConnection) {
+  peerConnection.createOffer().then((local_description) => {
+    peerConnection.setLocalDescription(local_description).then(() => {
+      signalingSocket.emit("relaySessionDescription", {
+        peer_id,
+        session_description: local_description,
+      });
+    });
+  });
+}
+
+function handlePeerTrack(peer_id, event) {
+  if (event.track.kind !== "video") return;
+
+  let remote_media = createMediaElement();
+  attachMediaStream(remote_media, event.streams[0]);
+  peerMediaElements[peer_id] = remote_media;
+  console.log("Got Track for " + peer_id);
+}
+
+function createMediaElement() {
+  let mediaElement = document.createElement("video");
+  mediaElement.autoplay = true;
+  mediaElement.muted = true;
+  mediaElement.controls = true;
+  document.body.appendChild(mediaElement);
+  return mediaElement;
+}
+
+function attachMediaStream(element, stream) {
+  element.srcObject = stream;
 }
 
 async function setupLocalMedia(callback) {
@@ -176,37 +228,19 @@ async function setupLocalMedia(callback) {
       console.log("Error getting local media");
       console.log(err);
     });
-  // await navigator.mediaDevices
-  //   .getDisplayMedia({ audio: true, video: true })
-  //   .then((stream) => {
-  //     localDisplayMediaStream = stream;
-  //   })
-  //   .catch((err) => {
-  //     console.log("Error getting display media");
-  //     console.log(err);
-  //   });
 }
 
-function createMediaElement() {
-  let mediaElement = document.createElement("video");
-  mediaElement.autoplay = true;
-  mediaElement.muted = true;
-  mediaElement.controls = true;
-  document.body.appendChild(mediaElement);
-  return mediaElement;
-}
-
-function attachMediaStream(element, stream) {
-  element.srcObject = stream;
+function joinChannel() {
+  signalingSocket.emit("join", CHANNEL);
 }
 
 // this function is called with a stream and its job is to add it to all the peer connections and renegotiate
 function addStreamToPeers(stream) {
   console.log("Adding stream to peers");
   Object.keys(peers).forEach((peer_id) => {
-    let peer_connection = peers[peer_id];
+    let peerConnection = peers[peer_id];
     stream.getTracks().forEach((track) => {
-      peer_connection.addTrack(track, stream);
+      peerConnection.addTrack(track, stream);
     });
   });
 }
