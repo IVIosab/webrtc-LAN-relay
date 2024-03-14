@@ -11,11 +11,16 @@ const CHANNEL = "global";
 /*** STORAGE ***/
 /***************/
 let signalingSocket = null;
+
 let localMediaStream = null;
+// let localDisplayMediaStream = null;
+
+let streams = {};
 
 let peers = {};
 let peerMediaElements = {};
 
+let leader = false;
 let initialNegotiation = true;
 
 /**************/
@@ -35,6 +40,7 @@ function setupSignalingSocket() {
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
   signalingSocket.on("removePeer", handleRemovePeer);
+  signalingSocket.on("leader", handleLeader);
   signalingSocket.on("disconnect", handleDisconnect);
 }
 
@@ -56,6 +62,7 @@ function handleAddPeer(config) {
 
   peerConnection.onnegotiationneeded = (event) => {
     console.group("Event: onnegotiationneeded");
+    console.log(event);
     handlePeerNegotiation(peer_id, peerConnection, config.should_create_offer);
     console.groupEnd();
   };
@@ -68,7 +75,7 @@ function handleAddPeer(config) {
 
   peerConnection.onicegatheringstatechange = (event) => {
     console.group("Event: onicegatheringstatechange");
-    handlePeerIceGathering(event.target.iceGatheringState);
+    handlePeerIceGathering(peer_id, event.target.iceGatheringState);
     console.groupEnd();
   };
 
@@ -118,6 +125,11 @@ function removePeer(peer_id) {
   }
 }
 
+function handleLeader() {
+  leader = true;
+  console.log("LEADER");
+}
+
 function handleDisconnect() {
   removeAllPeers();
 }
@@ -148,7 +160,7 @@ function extractPeers() {
 }
 
 function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
-  if (shouldCreateOffer) {
+  if (shouldCreateOffer || leader) {
     createAndSendOffer(peer_id, peerConnection);
   }
 }
@@ -167,16 +179,21 @@ function handlePeerIceCandidate(peer_id, candidate) {
 /**
  * should be used in relaying streams
  */
-function handlePeerIceGathering(iceGatheringState) {
+function handlePeerIceGathering(peerId, iceGatheringState) {
   switch (iceGatheringState) {
     case "gathering":
       console.debug("Gathering");
       break;
     case "complete":
       console.debug("Complete");
-      //   if (localDisplayMediaStream) {
-      //     addStreamToPeers(localDisplayMediaStream);
-      //   }
+      // if (localDisplayMediaStream) {
+      //   console.debug("Adding Display");
+      //   localDisplayMediaStream.getTracks().forEach((track) => {
+      //     peers[peerId].addTrack(track, localDisplayMediaStream);
+      //   });
+      //   console.debug("Added Display");
+      // addStreamToPeers(localDisplayMediaStream);
+      // }
       break;
   }
 }
@@ -228,6 +245,15 @@ async function setupLocalMedia(callback) {
       console.log("Error getting local media");
       console.log(err);
     });
+  // await navigator.mediaDevices
+  //   .getDisplayMedia({ audio: true, video: true })
+  //   .then((stream) => {
+  //     localDisplayMediaStream = stream;
+  //   })
+  //   .catch((err) => {
+  //     console.log("Error getting display media");
+  //     console.log(err);
+  //   });
 }
 
 function joinChannel() {
@@ -237,12 +263,13 @@ function joinChannel() {
 // this function is called with a stream and its job is to add it to all the peer connections and renegotiate
 function addStreamToPeers(stream) {
   console.log("Adding stream to peers");
-  Object.keys(peers).forEach((peer_id) => {
-    let peerConnection = peers[peer_id];
+
+  const peerIDs = Object.keys(peers);
+  for (let i = 0; i < peerIDs.length; i++) {
     stream.getTracks().forEach((track) => {
-      peerConnection.addTrack(track, stream);
+      peers[peerIDs[i]].addTrack(track, stream);
     });
-  });
+  }
 }
 
 init(); // Start the initialization process

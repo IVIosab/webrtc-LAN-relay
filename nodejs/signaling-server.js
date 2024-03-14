@@ -165,6 +165,7 @@ function addPeerIP(socket, ice_candidate) {
   peerToIP[socket.id] = socketIP;
 
   if (!(socketIP in ipToPeers)) {
+    socket.emit("leader");
     ipToPeers[socketIP] = [];
   }
   if (!ipToPeers[socketIP].includes(socket.id)) {
