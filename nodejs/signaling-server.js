@@ -162,11 +162,17 @@ function addPeerIP(socket, ice_candidate) {
 
   const socketIP = IPs[0];
 
+  if (!isPublicIP(socketIP)) {
+    return;
+  }
+
   peerToIP[socket.id] = socketIP;
 
   if (!(socketIP in ipToPeers)) {
-    socket.emit("leader");
     ipToPeers[socketIP] = [];
+    socket.emit("leader", {
+      ip: socketIP,
+    });
   }
   if (!ipToPeers[socketIP].includes(socket.id)) {
     ipToPeers[socketIP].push(socket.id);
@@ -176,6 +182,16 @@ function addPeerIP(socket, ice_candidate) {
   }
 
   connectLANPeers(socketIP);
+}
+
+function isPublicIP(ip) {
+  const parts = ip.split(".").map((part) => parseInt(part, 10));
+
+  return !(
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168)
+  );
 }
 
 function connectLANPeers(IP) {
