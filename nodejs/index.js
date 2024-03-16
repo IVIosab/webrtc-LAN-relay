@@ -20,6 +20,8 @@ let streams = {};
 let peers = {};
 let peerMediaElements = {};
 
+let myId = "";
+let myIp = "";
 let leader = false;
 let initialNegotiation = true;
 
@@ -36,12 +38,36 @@ function setupSignalingSocket() {
   signalingSocket.on("connect", () => {
     console.log("Connected to signaling server");
   });
+  signalingSocket.on("firstPeer", handleFirstPeer);
   signalingSocket.on("addPeer", handleAddPeer);
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
   signalingSocket.on("removePeer", handleRemovePeer);
   signalingSocket.on("leader", handleLeader);
   signalingSocket.on("disconnect", handleDisconnect);
+}
+
+function handleFirstPeer() {
+  let externalIP = "";
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+  pc.createDataChannel("");
+  pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+  pc.onicecandidate = (ice) => {
+    if (!ice || !ice.candidate || !ice.candidate.candidate) {
+      pc.close();
+      signalingSocket.emit("establishLeader", {
+        external_ip: externalIP,
+      });
+      myIp = externalIP;
+      return;
+    }
+    let split = ice.candidate.candidate.split(" ");
+    if (!(split[7] === "host")) {
+      externalIP = split[4];
+    }
+  };
 }
 
 function handleAddPeer(config) {
@@ -62,7 +88,6 @@ function handleAddPeer(config) {
 
   peerConnection.onnegotiationneeded = (event) => {
     console.group("Event: onnegotiationneeded");
-    console.log(event);
     handlePeerNegotiation(peer_id, peerConnection, config.should_create_offer);
     console.groupEnd();
   };
@@ -160,7 +185,7 @@ function extractPeers() {
 }
 
 function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
-  if (shouldCreateOffer || leader) {
+  if (shouldCreateOffer) {
     createAndSendOffer(peer_id, peerConnection);
   }
 }
@@ -186,14 +211,7 @@ function handlePeerIceGathering(peerId, iceGatheringState) {
       break;
     case "complete":
       console.debug("Complete");
-      // if (localDisplayMediaStream) {
-      //   console.debug("Adding Display");
-      //   localDisplayMediaStream.getTracks().forEach((track) => {
-      //     peers[peerId].addTrack(track, localDisplayMediaStream);
-      //   });
-      //   console.debug("Added Display");
-      // addStreamToPeers(localDisplayMediaStream);
-      // }
+      signalingSocket.emit("logIpInfo");
       break;
   }
 }
