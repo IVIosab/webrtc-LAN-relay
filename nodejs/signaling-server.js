@@ -51,16 +51,18 @@ io.sockets.on("connection", (socket) => {
   sockets[socket.id] = socket;
 
   peerToOrder[socket.id] = `[node-${id}]`;
+
   if (id === 1) {
-    socket.emit("firstPeer");
+    firstNodeID = socket.id;
   }
+
   id++;
 
   console.log(`${peerToOrder[socket.id]} connection accepted`);
 
-  socket.on("establishLeader", (config) =>
-    handleEstablishLeader(socket, config)
-  );
+  socket.emit("init");
+
+  socket.on("initialized", (config) => handleInitialized(socket, config));
   socket.on("join", () => handleJoin(socket));
   socket.on("relaySessionDescription", (config) =>
     handleSessionDescription(socket, config)
@@ -69,15 +71,24 @@ io.sockets.on("connection", (socket) => {
     handleIceCandidate(socket, config)
   );
   socket.on("disconnect", () => handleDisconnect(socket));
+  socket.on("getIpInfo", () => handleGetIpInfo(socket));
 
   socket.on("logIpInfo", () => logIpInfo());
 });
 
-function handleEstablishLeader(socket, config) {
+function handleGetIpInfo(socket) {
+  socket.emit("ipInfo", {
+    peerToIP: peerToIP,
+  });
+}
+
+function handleInitialized(socket, config) {
   let externalIP = config.external_ip;
-  console.log(`${peerToOrder[socket.id]} is the Leader of "${externalIP}"`);
-  firstNodeID = socket.id;
-  updateIPs(socket, externalIP);
+  let isLeader = updateIPs(socket, externalIP);
+  if (isLeader) {
+    console.log(`${peerToOrder[socket.id]} is the Leader of "${externalIP}"`);
+    socket.emit("leader");
+  }
   logIpInfo();
 }
 
@@ -176,7 +187,7 @@ function addPeerIP(socket, ice_candidate) {
 
   let externalIP = split[4];
 
-  updateIPs(socket, externalIP);
+  // updateIPs(socket, externalIP);
 
   connectLANPeers(externalIP);
 }
@@ -184,9 +195,11 @@ function addPeerIP(socket, ice_candidate) {
 function updateIPs(socket, externalIP) {
   peerToIP[socket.id] = externalIP;
 
+  let isLeader = false;
+
   if (!(externalIP in ipToPeers)) {
     ipToPeers[externalIP] = [];
-    socket.emit("leader");
+    isLeader = true;
   }
   if (!ipToPeers[externalIP].includes(socket.id)) {
     ipToPeers[externalIP].push(socket.id);
@@ -194,6 +207,8 @@ function updateIPs(socket, externalIP) {
   if (!ipToLeader[externalIP]) {
     ipToLeader[externalIP] = socket.id;
   }
+
+  return isLeader;
 }
 
 function connectLANPeers(IP) {

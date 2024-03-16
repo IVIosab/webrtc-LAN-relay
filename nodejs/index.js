@@ -19,6 +19,7 @@ let streams = {};
 
 let peers = {};
 let peerMediaElements = {};
+let peerToIP = {};
 
 let myId = "";
 let myIp = "";
@@ -38,26 +39,31 @@ function setupSignalingSocket() {
   signalingSocket.on("connect", () => {
     console.log("Connected to signaling server");
   });
-  signalingSocket.on("firstPeer", handleFirstPeer);
+  signalingSocket.on("init", handleInit);
+  signalingSocket.on("leader", handleLeader);
+  signalingSocket.on("ipInfo", handleIpInfo);
   signalingSocket.on("addPeer", handleAddPeer);
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
   signalingSocket.on("removePeer", handleRemovePeer);
-  signalingSocket.on("leader", handleLeader);
   signalingSocket.on("disconnect", handleDisconnect);
 }
 
-function handleFirstPeer() {
+function handleIpInfo(config) {
+  peerToIP = config.peerToIP;
+}
+
+function handleInit() {
   let externalIP = "";
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: ICE_SERVERS,
   });
   pc.createDataChannel("");
   pc.createOffer().then((offer) => pc.setLocalDescription(offer));
   pc.onicecandidate = (ice) => {
     if (!ice || !ice.candidate || !ice.candidate.candidate) {
       pc.close();
-      signalingSocket.emit("establishLeader", {
+      signalingSocket.emit("initialized", {
         external_ip: externalIP,
       });
       myIp = externalIP;
@@ -68,6 +74,11 @@ function handleFirstPeer() {
       externalIP = split[4];
     }
   };
+}
+
+function handleLeader() {
+  leader = true;
+  console.log("LEADER");
 }
 
 function handleAddPeer(config) {
@@ -150,11 +161,6 @@ function removePeer(peer_id) {
   }
 }
 
-function handleLeader() {
-  leader = true;
-  console.log("LEADER");
-}
-
 function handleDisconnect() {
   removeAllPeers();
 }
@@ -229,11 +235,15 @@ function createAndSendOffer(peer_id, peerConnection) {
 
 function handlePeerTrack(peer_id, event) {
   if (event.track.kind !== "video") return;
+  signalingSocket.emit("getIpInfo");
 
   let remote_media = createMediaElement();
   attachMediaStream(remote_media, event.streams[0]);
   peerMediaElements[peer_id] = remote_media;
   console.log("Got Track for " + peer_id);
+  if (peerToIP[peer_id] !== myIp) {
+    addStreamToPeers(event.streams[0]);
+  }
 }
 
 function createMediaElement() {
@@ -284,9 +294,11 @@ function addStreamToPeers(stream) {
 
   const peerIDs = Object.keys(peers);
   for (let i = 0; i < peerIDs.length; i++) {
-    stream.getTracks().forEach((track) => {
-      peers[peerIDs[i]].addTrack(track, stream);
-    });
+    if (peerToIP[peerIDs[i]] === myIp) {
+      stream.getTracks().forEach((track) => {
+        peers[peerIDs[i]].addTrack(track, stream);
+      });
+    }
   }
 }
 
