@@ -23,7 +23,7 @@ let peerToIP = {};
 
 let myId = "";
 let myIp = "";
-let leader = false;
+let isLeader = false;
 let initialNegotiation = true;
 
 /**************/
@@ -31,6 +31,7 @@ let initialNegotiation = true;
 /**************/
 function init() {
   setupSignalingSocket();
+  Init();
   setupLocalMedia(joinChannel);
 }
 
@@ -39,7 +40,6 @@ function setupSignalingSocket() {
   signalingSocket.on("connect", () => {
     console.log("Connected to signaling server");
   });
-  signalingSocket.on("init", handleInit);
   signalingSocket.on("leader", handleLeader);
   signalingSocket.on("ipInfo", handleIpInfo);
   signalingSocket.on("addPeer", handleAddPeer);
@@ -51,9 +51,10 @@ function setupSignalingSocket() {
 
 function handleIpInfo(config) {
   peerToIP = config.peerToIP;
+  console.log(peerToIP);
 }
 
-function handleInit() {
+function Init() {
   let externalIP = "";
   const pc = new RTCPeerConnection({
     iceServers: ICE_SERVERS,
@@ -77,7 +78,7 @@ function handleInit() {
 }
 
 function handleLeader() {
-  leader = true;
+  isLeader = true;
   console.log("LEADER");
 }
 
@@ -191,7 +192,10 @@ function extractPeers() {
 }
 
 function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
-  if (shouldCreateOffer) {
+  if (
+    shouldCreateOffer ||
+    (isLeader && myIp === peerToIP[peer_id] && peers[peer_id])
+  ) {
     createAndSendOffer(peer_id, peerConnection);
   }
 }
@@ -235,15 +239,18 @@ function createAndSendOffer(peer_id, peerConnection) {
 
 function handlePeerTrack(peer_id, event) {
   if (event.track.kind !== "video") return;
-  signalingSocket.emit("getIpInfo");
 
   let remote_media = createMediaElement();
   attachMediaStream(remote_media, event.streams[0]);
   peerMediaElements[peer_id] = remote_media;
-  console.log("Got Track for " + peer_id);
-  if (peerToIP[peer_id] !== myIp) {
-    addStreamToPeers(event.streams[0]);
-  }
+  setTimeout(() => {
+    console.log("Got Track for " + peer_id);
+    console.log(peerToIP[peer_id]);
+    if (peerToIP[peer_id] && peerToIP[peer_id] !== myIp && isLeader) {
+      console.log(`${peerToIP[peer_id]} !== ${myIp}`);
+      addStreamToPeers(event.streams[0], peer_id);
+    }
+  }, 1000);
 }
 
 function createMediaElement() {
@@ -289,16 +296,27 @@ function joinChannel() {
 }
 
 // this function is called with a stream and its job is to add it to all the peer connections and renegotiate
-function addStreamToPeers(stream) {
+function addStreamToPeers(stream, peer_id) {
   console.log("Adding stream to peers");
 
   const peerIDs = Object.keys(peers);
+  let myPeers = [];
+  let otherPeers = [];
   for (let i = 0; i < peerIDs.length; i++) {
     if (peerToIP[peerIDs[i]] === myIp) {
+      myPeers.push(peerIDs[i]);
       stream.getTracks().forEach((track) => {
         peers[peerIDs[i]].addTrack(track, stream);
       });
     }
+    else{
+      otherPeers.push(peerIDs[i]);
+    }
+  }
+
+  for (let i = 0; i < otherPeers.length; i++) {
+    // get tracks of my peers 
+    // send it to other peers   
   }
 }
 

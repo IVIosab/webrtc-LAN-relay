@@ -60,8 +60,7 @@ io.sockets.on("connection", (socket) => {
 
   console.log(`${peerToOrder[socket.id]} connection accepted`);
 
-  socket.emit("init");
-
+  socket.on("sendIPs", () => handleSendIPs());
   socket.on("initialized", (config) => handleInitialized(socket, config));
   socket.on("join", () => handleJoin(socket));
   socket.on("relaySessionDescription", (config) =>
@@ -71,25 +70,20 @@ io.sockets.on("connection", (socket) => {
     handleIceCandidate(socket, config)
   );
   socket.on("disconnect", () => handleDisconnect(socket));
-  socket.on("getIpInfo", () => handleGetIpInfo(socket));
-
-  socket.on("logIpInfo", () => logIpInfo());
+  socket.on("logIpInfo", () => logIpInfo(socket));
 });
-
-function handleGetIpInfo(socket) {
-  socket.emit("ipInfo", {
-    peerToIP: peerToIP,
-  });
-}
 
 function handleInitialized(socket, config) {
   let externalIP = config.external_ip;
   let isLeader = updateIPs(socket, externalIP);
+  socket.emit("ipInfo", {
+    peerToIP: peerToIP,
+  });
   if (isLeader) {
     console.log(`${peerToOrder[socket.id]} is the Leader of "${externalIP}"`);
     socket.emit("leader");
   }
-  logIpInfo();
+  // logIpInfo();
 }
 
 /**
@@ -283,7 +277,10 @@ function removePeerIP(socket) {
   delete peerToIP[socket.id];
 }
 
-function logIpInfo() {
+function logIpInfo(socket) {
+  socket.emit("ipInfo", {
+    peerToIP: peerToIP,
+  });
   console.log("\n-------------------");
   const IPs = Object.keys(ipToPeers);
   for (let i = 0; i < IPs.length; i++) {
