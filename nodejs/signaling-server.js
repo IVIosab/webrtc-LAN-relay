@@ -51,10 +51,16 @@ io.sockets.on("connection", (socket) => {
   sockets[socket.id] = socket;
 
   peerToOrder[socket.id] = `[node-${id}]`;
+  if (id === 1) {
+    socket.emit("firstPeer");
+  }
   id++;
 
   console.log(`${peerToOrder[socket.id]} connection accepted`);
 
+  socket.on("establishLeader", (config) =>
+    handleEstablishLeader(socket, config)
+  );
   socket.on("join", () => handleJoin(socket));
   socket.on("relaySessionDescription", (config) =>
     handleSessionDescription(socket, config)
@@ -63,7 +69,17 @@ io.sockets.on("connection", (socket) => {
     handleIceCandidate(socket, config)
   );
   socket.on("disconnect", () => handleDisconnect(socket));
+
+  socket.on("logIpInfo", () => logIpInfo());
 });
+
+function handleEstablishLeader(socket, config) {
+  let externalIP = config.external_ip;
+  console.log(`${peerToOrder[socket.id]} is the Leader of "${externalIP}"`);
+  firstNodeID = socket.id;
+  updateIPs(socket, externalIP);
+  logIpInfo();
+}
 
 /**
  * Handles the "join" event.
@@ -71,12 +87,8 @@ io.sockets.on("connection", (socket) => {
  * -
  */
 function handleJoin(socket) {
-  logIpInfo();
   console.log(`${peerToOrder[socket.id]} joined "${CHANNEL}" chat`);
-
-  if (firstNodeID === "") {
-    firstNodeID = socket.id;
-  } else if (socket.id !== firstNodeID) {
+  if (firstNodeID !== "") {
     createPeerConnection(socket.id, firstNodeID, true);
   }
 }
@@ -88,19 +100,20 @@ function createPeerConnection(peer1, peer2, shouldCreateOffer) {
 
   console.log(`Connecting ${peerToOrder[peer1]} with ${peerToOrder[peer2]}`);
 
-  //Tell peer1 to add peer2
-  sockets[peer1].emit("addPeer", {
+  connectPair("addPeer", peer1, peer2, shouldCreateOffer);
+
+  storeConnections(peer1, peer2);
+}
+
+function connectPair(event, peer1, peer2, shouldCreateOffer) {
+  sockets[peer1].emit(event, {
     peer_id: peer2,
     should_create_offer: shouldCreateOffer,
   });
-
-  //Tell peer2 to add peer1
-  sockets[peer2].emit("addPeer", {
+  sockets[peer2].emit(event, {
     peer_id: peer1,
     should_create_offer: !shouldCreateOffer,
   });
-
-  storeConnections(peer1, peer2);
 }
 
 function storeConnections(peer1, peer2) {
@@ -155,43 +168,32 @@ function handleIceCandidate(socket, config) {
 }
 
 function addPeerIP(socket, ice_candidate) {
-  const IPs = ice_candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/g);
-  if (!IPs || IPs.length === 0) {
+  let split = ice_candidate.candidate.split(" ");
+
+  if (!split || split.length === 0 || split[7] === "host") {
     return;
   }
 
-  const socketIP = IPs[0];
+  let externalIP = split[4];
 
-  if (!isPublicIP(socketIP)) {
-    return;
-  }
+  updateIPs(socket, externalIP);
 
-  peerToIP[socket.id] = socketIP;
-
-  if (!(socketIP in ipToPeers)) {
-    ipToPeers[socketIP] = [];
-    socket.emit("leader", {
-      ip: socketIP,
-    });
-  }
-  if (!ipToPeers[socketIP].includes(socket.id)) {
-    ipToPeers[socketIP].push(socket.id);
-  }
-  if (!ipToLeader[socketIP]) {
-    ipToLeader[socketIP] = socket.id;
-  }
-
-  connectLANPeers(socketIP);
+  connectLANPeers(externalIP);
 }
 
-function isPublicIP(ip) {
-  const parts = ip.split(".").map((part) => parseInt(part, 10));
+function updateIPs(socket, externalIP) {
+  peerToIP[socket.id] = externalIP;
 
-  return !(
-    parts[0] === 10 ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168)
-  );
+  if (!(externalIP in ipToPeers)) {
+    ipToPeers[externalIP] = [];
+    socket.emit("leader");
+  }
+  if (!ipToPeers[externalIP].includes(socket.id)) {
+    ipToPeers[externalIP].push(socket.id);
+  }
+  if (!ipToLeader[externalIP]) {
+    ipToLeader[externalIP] = socket.id;
+  }
 }
 
 function connectLANPeers(IP) {
@@ -206,7 +208,7 @@ function connectLANPeers(IP) {
 }
 
 function connectLeaders() {
-  // console.log("Connecting leader peers");
+  // console.log("Connecting Leaders");
 
   let leaders = extractLeaders();
 
@@ -217,7 +219,7 @@ function connectList(peers) {
   for (let i = 0; i < peers.length; i++) {
     for (let j = 0; j < peers.length; j++) {
       if (i !== j && !isConnected(peers[i], peers[j])) {
-        createPeerConnection(peers[i], peers[j], CHANNEL, true);
+        createPeerConnection(peers[i], peers[j], true);
       }
     }
   }
@@ -267,13 +269,13 @@ function removePeerIP(socket) {
 }
 
 function logIpInfo() {
-  console.log("\n\n");
+  console.log("\n-------------------");
   const IPs = Object.keys(ipToPeers);
   for (let i = 0; i < IPs.length; i++) {
-    console.log(`\t${IPs[i]}: `);
+    console.log(`${IPs[i]}: `);
     for (let j = 0; j < ipToPeers[IPs[i]].length; j++) {
-      console.log(`\t\t${peerToOrder[ipToPeers[IPs[i]][j]]}`);
+      console.log(`  #${j + 1}: ${peerToOrder[ipToPeers[IPs[i]][j]]}`);
     }
   }
-  console.log("\n\n");
+  console.log("-------------------");
 }
