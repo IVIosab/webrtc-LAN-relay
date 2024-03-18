@@ -99,6 +99,10 @@ function handlePeerIP(socket, config, callback) {
 
   let isLeader = updateIPs(socket.id, peerIP);
 
+  if (!(socket.id in connections)) {
+    connections[socket.id] = {};
+  }
+
   socket.emit("sendIPInfo", {
     peerToIP: peerToIP,
   });
@@ -159,10 +163,12 @@ function connectPair(peer1, peer2, shouldCreateOffer) {
   sockets[peer1].emit("addPeer", {
     peer_id: peer2,
     should_create_offer: shouldCreateOffer,
+    peer_ip: peerToIP[peer2],
   });
   sockets[peer2].emit("addPeer", {
     peer_id: peer1,
     should_create_offer: !shouldCreateOffer,
+    peer_ip: peerToIP[peer1],
   });
 }
 
@@ -326,13 +332,21 @@ function extractLeaderIDs() {
 }
 
 function isConnected(peer1, peer2) {
-  if (!peer1 || !peer2 || !connections[peer1] || !connections[peer2]) {
+  if (!peer1 || !peer2) {
     console.group(`Unexpected undefined:`);
     console.error(`\tpeer1: ${peer1}`);
     console.error(`\tpeer2: ${peer2}`);
-    console.error(`\tconnections[peer1]: ${connections[peer1]}`);
-    console.error(`\tconnections[peer2]: ${connections[peer2]}`);
+    console.groupEnd();
+    return;
   }
+
+  if (!connections[peer1]) {
+    connections[peer1] = {};
+  }
+  if (!connections[peer2]) {
+    connections[peer2] = {};
+  }
+
   return connections[peer1] && connections[peer1][peer2];
 }
 
