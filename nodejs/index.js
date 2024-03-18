@@ -13,7 +13,6 @@ const CHANNEL = "global";
 let signalingSocket = null;
 
 let localMediaStream = null;
-// let localDisplayMediaStream = null;
 
 let streams = {};
 
@@ -21,8 +20,8 @@ let peers = {};
 let peerMediaElements = {};
 let peerToIP = {};
 
-let myId = "";
-let myIp = "";
+let myID = "";
+let myIP = "";
 let isLeader = false;
 let initialNegotiation = true;
 
@@ -31,8 +30,7 @@ let initialNegotiation = true;
 /**************/
 function init() {
   setupSignalingSocket();
-  Init();
-  setupLocalMedia(joinChannel);
+  getPeerIP();
 }
 
 function setupSignalingSocket() {
@@ -41,7 +39,7 @@ function setupSignalingSocket() {
     console.log("Connected to signaling server");
   });
   signalingSocket.on("leader", handleLeader);
-  signalingSocket.on("ipInfo", handleIpInfo);
+  signalingSocket.on("sendIPInfo", handleIPInfo);
   signalingSocket.on("addPeer", handleAddPeer);
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
@@ -49,12 +47,16 @@ function setupSignalingSocket() {
   signalingSocket.on("disconnect", handleDisconnect);
 }
 
-function handleIpInfo(config) {
+function handleIPInfo(config) {
   peerToIP = config.peerToIP;
   console.log(peerToIP);
 }
 
-function Init() {
+/**
+ * This starts a simple DataChannel to be able to use ice candidates
+ * to get the peer's IP which is then relayed to the server.
+ */
+function getPeerIP() {
   let externalIP = "";
   const pc = new RTCPeerConnection({
     iceServers: ICE_SERVERS,
@@ -62,12 +64,20 @@ function Init() {
   pc.createDataChannel("");
   pc.createOffer().then((offer) => pc.setLocalDescription(offer));
   pc.onicecandidate = (ice) => {
+    // at the end of ice candidates stream (empty candidate) set the external IP and send it to the server
     if (!ice || !ice.candidate || !ice.candidate.candidate) {
       pc.close();
-      signalingSocket.emit("initialized", {
-        external_ip: externalIP,
-      });
-      myIp = externalIP;
+      signalingSocket.emit(
+        "sendPeerIP",
+        {
+          peer_ip: externalIP,
+        },
+        (response) => {
+          console.log(response);
+          setupLocalMedia(joinChannel);
+        }
+      );
+      myIP = externalIP;
       return;
     }
     let split = ice.candidate.candidate.split(" ");
@@ -194,7 +204,7 @@ function extractPeers() {
 function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
   if (
     shouldCreateOffer ||
-    (isLeader && myIp === peerToIP[peer_id] && peers[peer_id])
+    (isLeader && myIP === peerToIP[peer_id] && peers[peer_id])
   ) {
     createAndSendOffer(peer_id, peerConnection);
   }
@@ -246,8 +256,8 @@ function handlePeerTrack(peer_id, event) {
   setTimeout(() => {
     console.log("Got Track for " + peer_id);
     console.log(peerToIP[peer_id]);
-    if (peerToIP[peer_id] && peerToIP[peer_id] !== myIp && isLeader) {
-      console.log(`${peerToIP[peer_id]} !== ${myIp}`);
+    if (peerToIP[peer_id] && peerToIP[peer_id] !== myIP && isLeader) {
+      console.log(`${peerToIP[peer_id]} !== ${myIP}`);
       addStreamToPeers(event.streams[0], peer_id);
     }
   }, 1000);
@@ -303,20 +313,19 @@ function addStreamToPeers(stream, peer_id) {
   let myPeers = [];
   let otherPeers = [];
   for (let i = 0; i < peerIDs.length; i++) {
-    if (peerToIP[peerIDs[i]] === myIp) {
+    if (peerToIP[peerIDs[i]] === myIP) {
       myPeers.push(peerIDs[i]);
       stream.getTracks().forEach((track) => {
         peers[peerIDs[i]].addTrack(track, stream);
       });
-    }
-    else{
+    } else {
       otherPeers.push(peerIDs[i]);
     }
   }
 
   for (let i = 0; i < otherPeers.length; i++) {
-    // get tracks of my peers 
-    // send it to other peers   
+    // get tracks of my peers
+    // send it to other peers
   }
 }
 
