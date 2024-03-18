@@ -249,18 +249,20 @@ function createAndSendOffer(peer_id, peerConnection) {
 
 function handlePeerTrack(peer_id, event) {
   if (event.track.kind !== "video") return;
-
+  console.log(streams[peer_id]);
   let remote_media = createMediaElement();
   attachMediaStream(remote_media, event.streams[0]);
   peerMediaElements[peer_id] = remote_media;
-  setTimeout(() => {
-    console.log("Got Track for " + peer_id);
-    console.log(peerToIP[peer_id]);
-    if (peerToIP[peer_id] && peerToIP[peer_id] !== myIP && isLeader) {
-      console.log(`${peerToIP[peer_id]} !== ${myIP}`);
-      addStreamToPeers(event.streams[0], peer_id);
-    }
-  }, 1000);
+  // setTimeout(() => {
+  console.log("Got Track for " + peer_id);
+  console.log(peerToIP[peer_id]);
+  if (peerToIP[peer_id] && peerToIP[peer_id] !== myIP && isLeader) {
+    console.log(`${peerToIP[peer_id]} !== ${myIP}`);
+    addStreamToPeers(event.streams[0], peer_id);
+  } else {
+    streams[peer_id] = event.streams[0];
+  }
+  // }, 1000);
 }
 
 function createMediaElement() {
@@ -290,15 +292,6 @@ async function setupLocalMedia(callback) {
       console.log("Error getting local media");
       console.log(err);
     });
-  // await navigator.mediaDevices
-  //   .getDisplayMedia({ audio: true, video: true })
-  //   .then((stream) => {
-  //     localDisplayMediaStream = stream;
-  //   })
-  //   .catch((err) => {
-  //     console.log("Error getting display media");
-  //     console.log(err);
-  //   });
 }
 
 function joinChannel() {
@@ -308,7 +301,6 @@ function joinChannel() {
 // this function is called with a stream and its job is to add it to all the peer connections and renegotiate
 function addStreamToPeers(stream, peer_id) {
   console.log("Adding stream to peers");
-
   const peerIDs = Object.keys(peers);
   let myPeers = [];
   let otherPeers = [];
@@ -324,8 +316,11 @@ function addStreamToPeers(stream, peer_id) {
   }
 
   for (let i = 0; i < otherPeers.length; i++) {
-    // get tracks of my peers
-    // send it to other peers
+    for (let j = 0; j < myPeers.length; j++) {
+      streams[myPeers[j]].getTracks().forEach((track) => {
+        peers[otherPeers[i]].addTrack(track, streams[myPeers[j]]);
+      });
+    }
   }
 }
 
