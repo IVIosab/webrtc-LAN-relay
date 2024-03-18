@@ -66,9 +66,8 @@ io.sockets.on("connection", (socket) => {
 
   id++;
 
-  console.log(`${peerToOrder[socket.id]} connection accepted`);
+  logDebug("Connection accepted", ["Peer", peerToOrder[socket.id]]);
 
-  // socket.on("sendIPs", () => handleSendIPs());
   socket.on("sendPeerIP", (config, callback) =>
     handlePeerIP(socket, config, callback)
   );
@@ -84,16 +83,15 @@ io.sockets.on("connection", (socket) => {
 });
 
 function handlePeerIP(socket, config, callback) {
-  if (!socket || !config || !config.peer_ip) {
-    if (DEBUG) {
-      console.group(`Unexpected undefined:`);
-      console.error(`\tsocket: ${socket}`);
-      console.error(`\tconfig: ${config}`);
-      console.error(`\tconfig.peer_ip: ${config.peer_ip}`);
-      console.groupEnd();
-    }
-    return;
-  }
+  if (!socket || !config || !config.peer_ip)
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "config",
+      config,
+      "config.peer_ip",
+      config.peer_ip,
+    ]);
 
   let peerIP = config.peer_ip;
 
@@ -108,51 +106,105 @@ function handlePeerIP(socket, config, callback) {
   });
 
   if (isLeader) {
-    console.log(`${peerToOrder[socket.id]} is the Leader of "${peerIP}"`);
+    logDebug("Leader declaration", [
+      "peer",
+      peerToOrder[socket.id],
+      "IP",
+      peerIP,
+    ]);
     socket.emit("leader");
   }
 
   callback("Server finished processing IP");
 }
 
-function handleJoin(socket) {
-  if (!socket || !peerToOrder[socket.id]) {
-    if (DEBUG) {
-      console.group(`Unexpected undefined:`);
-      console.error(`\tsocket: ${socket}`);
-      console.error(`\tpeerToOrder[socket.id]: ${peerToOrder[socket.id]}`);
-      console.groupEnd();
-    }
-    return;
-  }
+function updateIPs(peer, IP) {
+  if (!peer || !IP) logError("Unexpected undefined", ["peer", peer, "IP", IP]);
 
-  console.log(`${peerToOrder[socket.id]} joined "${CHANNEL}" chat`);
+  peerToIP[peer] = IP;
+
+  let isLeader = false;
+
+  if (!(IP in ipToPeers)) {
+    ipToPeers[IP] = [];
+    isLeader = true;
+  }
+  if (!ipToPeers[IP].includes(peer)) ipToPeers[IP].push(peer);
+
+  if (!ipToLeader[IP]) ipToLeader[IP] = peer;
+
+  return isLeader;
+}
+
+function handleJoin(socket) {
+  if (!socket || !peerToOrder[socket.id])
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "peerToOrder[socket.id]",
+      peerToOrder[socket.id],
+    ]);
+
+  logDebug("Peer joined", ["peer", peerToOrder[socket.id], "Channel", CHANNEL]);
+
   connectLeaders();
   connectLANs();
 }
 
-function createPeerConnection(peer1, peer2, shouldCreateOffer) {
-  if (!peer1 || !peer2 || !shouldCreateOffer) {
-    if (DEBUG) {
-      console.group(`Unexpected undefined:`);
-      console.error(`\tpeer1: ${peer1}`);
-      console.error(`\tpeer2: ${peer2}`);
-      console.error(`\tshouldCreateOffer: ${shouldCreateOffer}`);
-      console.groupEnd();
-    }
-    return;
-  }
-  if (peer1 === peer2) {
-    if (DEBUG) {
-      console.group(`Unexpected peer1 = peer2:`);
-      console.error(`\tpeer1: ${peer1}`);
-      console.error(`\tpeer2: ${peer2}`);
-      console.groupEnd();
-    }
-    return;
+function connectLeaders() {
+  logDebug("Connecting Leaders", []);
+
+  let leaders = extractLeaderIDs();
+  connectList(leaders);
+}
+
+function extractLeaderIDs() {
+  let leaderIDs = [];
+
+  const IPs = Object.keys(ipToLeader);
+
+  for (let i = 0; i < IPs.length; i++) {
+    if (!leaderIDs.includes(ipToLeader[IPs[i]]))
+      leaderIDs.push(ipToLeader[IPs[i]]);
   }
 
-  console.log(`Connecting ${peerToOrder[peer1]} with ${peerToOrder[peer2]}`);
+  return leaderIDs;
+}
+
+function connectList(peers) {
+  if (peers.length <= 1) return;
+
+  for (let i = 0; i < peers.length; i++) {
+    for (let j = i + 1; j < peers.length; j++) {
+      if (!isConnected(peers[i], peers[j]))
+        createPeerConnection(peers[i], peers[j], true);
+    }
+  }
+}
+
+function isConnected(peer1, peer2) {
+  if (!peer1 || !peer2)
+    logError("Unexpected undefiend", ["peer1", peer1, "peer2", peer2]);
+
+  if (!connections[peer1]) connections[peer1] = {};
+  if (!connections[peer2]) connections[peer2] = {};
+
+  return connections[peer1] && connections[peer1][peer2];
+}
+function createPeerConnection(peer1, peer2, shouldCreateOffer) {
+  if (!peer1 || !peer2 || !shouldCreateOffer)
+    logError("Unexpected undefined", [
+      "peer1",
+      peer1,
+      "peer2",
+      peer2,
+      "shouldCreateOffer",
+      shouldCreateOffer,
+    ]);
+  if (peer1 === peer2) {
+    logWarning("Peer1 === Peer2", ["peer1", peer1, "peer2", peer2]);
+    return;
+  }
 
   connectPair(peer1, peer2, shouldCreateOffer);
 
@@ -160,6 +212,13 @@ function createPeerConnection(peer1, peer2, shouldCreateOffer) {
 }
 
 function connectPair(peer1, peer2, shouldCreateOffer) {
+  logDebug("Connecting pair of peers", [
+    "peer1",
+    peerToOrder[peer1],
+    "peer2",
+    peerToOrder[peer2],
+  ]);
+
   sockets[peer1].emit("addPeer", {
     peer_id: peer2,
     should_create_offer: shouldCreateOffer,
@@ -172,9 +231,6 @@ function connectPair(peer1, peer2, shouldCreateOffer) {
   });
 }
 
-/**
- * Store that peer1 and peer2 are connected with eachother in the adjacency matrix
- */
 function storeConnections(peer1, peer2) {
   if (!(peer1 in connections)) {
     connections[peer1] = {};
@@ -186,106 +242,6 @@ function storeConnections(peer1, peer2) {
   connections[peer2][peer1] = true;
 }
 
-function handleSessionDescription(socket, config) {
-  if (!socket || !config || !config.peer_id || !config.session_description) {
-    console.group("Unexpected undefined:");
-    console.error(`\tsocket: ${socket}`);
-    console.error(`\tconfig: ${config}`);
-    console.error(`\tconfig.peer_id: ${config.peer_id}`);
-    console.error(
-      `\tconfig.session_description: ${config.session_description}`
-    );
-    console.groupEnd();
-  }
-
-  const { peer_id, session_description } = config;
-
-  console.log(
-    `${peerToOrder[socket.id]} relaying session description to ${
-      peerToOrder[peer_id]
-    }`
-  );
-
-  if (peer_id in sockets) {
-    sockets[peer_id].emit("sessionDescription", {
-      peer_id: socket.id,
-      session_description: session_description,
-    });
-  } else {
-    console.error(
-      `${peerToOrder[peer_id]} was not found in current connected peers`
-    );
-  }
-}
-
-function handleIceCandidate(socket, config) {
-  if (!socket || !config || !config.peer_id || !config.ice_candidate) {
-    console.group("Unexpected undefined:");
-    console.error(`\tsocket: ${socket}`);
-    console.error(`\tconfig: ${config}`);
-    console.error(`\tconfig.peer_id: ${config.peer_id}`);
-    console.error(`\tconfig.ice_candidate: ${config.ice_candidate}`);
-    console.groupEnd();
-  }
-
-  const { peer_id, ice_candidate } = config;
-
-  // console.log(
-  //   `${peerToOrder[socket.id]} relaying ICE candidate to ${
-  //     peerToOrder[peer_id]
-  //   }`
-  // );
-
-  if (peer_id in sockets) {
-    sockets[peer_id].emit("iceCandidate", {
-      peer_id: socket.id,
-      ice_candidate: ice_candidate,
-    });
-  }
-
-  // addPeerIP(socket, ice_candidate);
-}
-
-// function addPeerIP(socket, ice_candidate) {
-//   let split = ice_candidate.candidate.split(" ");
-
-//   if (!split || split.length === 0 || split[7] === "host") {
-//     return;
-//   }
-
-//   let externalIP = split[4];
-
-//   updateIPs(socket, externalIP);
-
-//   connectLANPeers(externalIP);
-// }
-
-function updateIPs(peer, IP) {
-  if (!peer || !IP) {
-    console.group("Unexpected undefined:");
-    console.error(`\tpeer: ${peer}`);
-    console.error(`\tIP: ${IP}`);
-    console.groupEnd();
-  }
-
-  peerToIP[peer] = IP;
-
-  let isLeader = false;
-
-  if (!(IP in ipToPeers)) {
-    ipToPeers[IP] = [];
-    isLeader = true;
-  }
-  if (!ipToPeers[IP].includes(peer)) {
-    ipToPeers[IP].push(peer);
-  }
-  if (!ipToLeader[IP]) {
-    ipToLeader[IP] = peer;
-  }
-
-  return isLeader;
-}
-
 function connectLANs() {
   const IPs = Object.keys(ipToPeers);
   for (let i = 0; i < IPs.length; i++) {
@@ -294,66 +250,78 @@ function connectLANs() {
 }
 
 function connectLANPeers(IP) {
-  console.log(`Connecting peers within ${IP}`);
+  logDebug("Connecting peers within LAN", ["IP", IP]);
+
   connectList(ipToPeers[IP]);
 }
 
-function connectLeaders() {
-  console.log("Connecting Leaders");
-  let leaders = extractLeaderIDs();
-  connectList(leaders);
+function handleSessionDescription(socket, config) {
+  if (!socket || !config || !config.peer_id || !config.session_description)
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "config",
+      config,
+      "config.peer_id",
+      config.peer_id,
+      "config.session_description",
+      config.session_description,
+    ]);
+
+  const { peer_id, session_description } = config;
+
+  // logDebug("Relaying session description", [
+  //   "From",
+  //   peerToOrder[socket.id],
+  //   "To",
+  //   peerToOrder[peer_id],
+  // ]);
+
+  if (peer_id in sockets) {
+    sockets[peer_id].emit("sessionDescription", {
+      peer_id: socket.id,
+      session_description: session_description,
+    });
+  } else {
+    logError("Peer not found", ["peer_id", peer_id]);
+  }
 }
 
-function connectList(peers) {
-  if (peers.length <= 1) {
-    return;
+function handleIceCandidate(socket, config) {
+  if (!socket || !config || !config.peer_id || !config.ice_candidate)
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "config",
+      config,
+      "config.peer_id",
+      config.peer_id,
+      "config.ice_cadidate",
+      config.ice_candidate,
+    ]);
+
+  const { peer_id, ice_candidate } = config;
+
+  // logDebug("Relaying ICE candidate", [
+  //   "From",
+  //   peerToOrder[socket.id],
+  //   "To",
+  //   peerToOrder[peer_id],
+  // ]);
+
+  if (peer_id in sockets) {
+    sockets[peer_id].emit("iceCandidate", {
+      peer_id: socket.id,
+      ice_candidate: ice_candidate,
+    });
   }
-  for (let i = 0; i < peers.length; i++) {
-    for (let j = i + 1; j < peers.length; j++) {
-      if (!isConnected(peers[i], peers[j])) {
-        createPeerConnection(peers[i], peers[j], true);
-      }
-    }
-  }
-}
-
-function extractLeaderIDs() {
-  let leaderIDs = [];
-
-  const IPs = Object.keys(ipToLeader);
-
-  for (let i = 0; i < IPs.length; i++) {
-    if (!leaderIDs.includes(ipToLeader[IPs[i]])) {
-      leaderIDs.push(ipToLeader[IPs[i]]);
-    }
-  }
-
-  return leaderIDs;
-}
-
-function isConnected(peer1, peer2) {
-  if (!peer1 || !peer2) {
-    console.group(`Unexpected undefined:`);
-    console.error(`\tpeer1: ${peer1}`);
-    console.error(`\tpeer2: ${peer2}`);
-    console.groupEnd();
-    return;
-  }
-
-  if (!connections[peer1]) {
-    connections[peer1] = {};
-  }
-  if (!connections[peer2]) {
-    connections[peer2] = {};
-  }
-
-  return connections[peer1] && connections[peer1][peer2];
 }
 
 function handleDisconnect(socket) {
   removePeerIP(socket);
 
-  console.log(`${peerToOrder[socket.id]} disconnected`);
+  logDebug("Peer disconnection", ["Peer", peerToOrder[socket.id]]);
+
   delete sockets[socket.id];
 }
 
@@ -375,6 +343,32 @@ function removePeerIP(socket) {
   }
 
   delete peerToIP[socket.id];
+}
+
+/*************/
+/*** UTILS ***/
+/*************/
+
+function logError(error, ...args) {
+  console.group(`ERROR: ${error}`);
+  for (let i = 0; i < args[0].length - 1; i = i + 2)
+    console.error(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
+  throw new Error("Stopping execution...");
+}
+
+function logWarning(warning, ...args) {
+  console.group(`WARNING: ${warning}`);
+  for (let i = 0; i < args[0].length - 1; i = i + 2)
+    console.warn(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
+}
+
+function logDebug(debug, ...args) {
+  console.group(`DEBUG: ${debug}`);
+  for (let i = 0; i < args[0].length; i = i + 2)
+    console.debug(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
 }
 
 function logIpInfo(socket) {
