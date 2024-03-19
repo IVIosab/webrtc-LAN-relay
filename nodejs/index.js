@@ -31,7 +31,7 @@ let peerToIP = {};
 let connections = {};
 
 /**************/
-/*** Client ***/
+/*** CLIENT ***/
 /**************/
 function init() {
   setupSignalingSocket();
@@ -43,66 +43,21 @@ function setupSignalingSocket() {
   signalingSocket.on("connect", () => {
     console.log("Connected to signaling server");
   });
-  signalingSocket.on("leader", handleLeader);
-  signalingSocket.on("sendIPInfo", handleIPInfo);
   signalingSocket.on("addPeer", handleAddPeer);
   signalingSocket.on("sessionDescription", handleSessionDescription);
   signalingSocket.on("iceCandidate", handleIceCandidate);
   signalingSocket.on("removePeer", handleRemovePeer);
   signalingSocket.on("disconnect", handleDisconnect);
-}
-
-function handleIPInfo(config) {
-  peerToIP = config.peerToIP;
-  console.log(peerToIP);
-}
-
-/**
- * This starts a simple DataChannel to be able to use ice candidates
- * to get the peer's IP which is then relayed to the server.
- */
-function getPeerIP() {
-  let externalIP = "";
-  const pc = new RTCPeerConnection({
-    iceServers: ICE_SERVERS,
-  });
-  pc.createDataChannel("");
-  pc.createOffer().then((offer) => pc.setLocalDescription(offer));
-  pc.onicecandidate = (ice) => {
-    // at the end of ice candidates stream (empty candidate) set the external IP and send it to the server
-    if (!ice || !ice.candidate || !ice.candidate.candidate) {
-      pc.close();
-      signalingSocket.emit(
-        "sendPeerIP",
-        {
-          peer_ip: externalIP,
-        },
-        (response) => {
-          console.log(response);
-          setupLocalMedia(joinChannel);
-        }
-      );
-      myIP = externalIP;
-      return;
-    }
-    let split = ice.candidate.candidate.split(" ");
-    if (!(split[7] === "host")) {
-      externalIP = split[4];
-    }
-  };
-}
-
-function handleLeader() {
-  isLeader = true;
-  console.log("LEADER");
+  signalingSocket.on("leader", handleLeader);
+  signalingSocket.on("sendIPInfo", handleIPInfo);
 }
 
 function handleAddPeer(config) {
   const { peer_id, should_create_offer, peer_ip } = config;
   if (peer_id in peers) return;
-  console.debug(`DEBUG: peer_id: ${peer_id}`);
+  logDebug("Adding peer", ["peer_id", peer_id]);
+  logDebug("Intializing RTCPeerConnection", []);
 
-  console.group("Logic: Initializing RTCPeerConnection");
   let peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peers[peer_id] = peerConnection;
   peersIPs[peer_id] = peer_ip;
@@ -111,37 +66,179 @@ function handleAddPeer(config) {
   } else {
     internetPeers[peer_id] = peerConnection;
   }
-  console.groupEnd();
 
-  console.group("Logic: Adding my stream to peer connections");
+  logDebug("Adding local stream to peer connection", []);
   localMediaStream.getTracks().forEach((track) => {
     peerConnection.addTrack(track, localMediaStream);
   });
-  console.groupEnd();
 
   peerConnection.onnegotiationneeded = (event) => {
-    console.group("Event: onnegotiationneeded");
     handlePeerNegotiation(peer_id, peerConnection, should_create_offer);
-    console.groupEnd();
   };
 
   peerConnection.onicecandidate = (event) => {
-    // console.group("Event: onicecandidate");
     handlePeerIceCandidate(peer_id, event.candidate);
-    // console.groupEnd();
   };
 
   peerConnection.onicegatheringstatechange = (event) => {
-    console.group("Event: onicegatheringstatechange");
     handlePeerIceGathering(peer_id, event.target.iceGatheringState);
-    console.groupEnd();
   };
 
   peerConnection.ontrack = (event) => {
-    console.group("Event: ontrack");
     handlePeerTrack(peer_id, event);
-    console.groupEnd();
   };
+}
+
+function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
+  if (
+    shouldCreateOffer ||
+    (isLeader && myIP === peerToIP[peer_id] && peers[peer_id])
+  ) {
+    createAndSendOffer(peer_id, peerConnection);
+  }
+}
+
+function createAndSendOffer(peer_id, peerConnection) {
+  peerConnection.createOffer().then((local_description) => {
+    peerConnection.setLocalDescription(local_description).then(() => {
+      signalingSocket.emit("relaySessionDescription", {
+        peer_id,
+        session_description: local_description,
+      });
+    });
+  });
+}
+
+function handlePeerIceCandidate(peer_id, candidate) {
+  if (candidate) {
+    signalingSocket.emit("relayICECandidate", {
+      peer_id,
+      ice_candidate: candidate,
+    });
+  } else {
+    logDebug("Ice candidate - No candidate", []);
+  }
+}
+
+function handlePeerIceGathering(peerId, iceGatheringState) {
+  switch (iceGatheringState) {
+    case "gathering":
+      logDebug("Ice gather state change {GATHERING...}", []);
+      break;
+    case "complete":
+      logDebug("Ice gather state change {COMPLETE}", []);
+      signalingSocket.emit("logIpInfo");
+      break;
+  }
+}
+
+function handlePeerTrack(peer_id, event) {
+  if (event.track.kind !== "video") return;
+  let remote_media = createMediaElement();
+  attachMediaStream(remote_media, event.streams[0]);
+  peerMediaElements[peer_id] = remote_media;
+  setTimeout(() => {
+    logDebug("Recieved peer stream", ["peer_id", peer_id]);
+    if (isLeader) {
+      if (peersIPs[peer_id] !== myIP) {
+        logDebug("Internet connection stream", [
+          "incomingPeerIP",
+          peersIPs[peer_id],
+          "myIP",
+          myIP,
+        ]);
+        internetStreams[peer_id] = event.streams[0];
+        addInternetStreamsToLanPeers();
+        addLanStreamsToInternetPeers();
+      } else {
+        lanStreams[peer_id] = event.streams[0];
+        addLanStreamsToInternetPeers();
+        addInternetStreamsToLanPeers();
+      }
+    }
+  }, 2000);
+}
+
+function createMediaElement() {
+  let mediaElement = document.createElement("video");
+  mediaElement.autoplay = true;
+  mediaElement.muted = true;
+  mediaElement.controls = true;
+  document.body.appendChild(mediaElement);
+  return mediaElement;
+}
+
+function attachMediaStream(element, stream) {
+  element.srcObject = stream;
+}
+
+function addInternetStreamsToLanPeers() {
+  const internetStreamsIDs = Object.keys(internetStreams);
+  for (let i = 0; i < internetStreamsIDs.length; i++) {
+    addInternetStreamToLanPeers(
+      internetStreams[internetStreamsIDs[i]],
+      internetStreamsIDs[i]
+    );
+  }
+}
+
+function addInternetStreamToLanPeers(stream, peer_id) {
+  const lanPeersIDs = Object.keys(lanPeers);
+
+  for (let i = 0; i < lanPeersIDs.length; i++) {
+    if (!isConnected(peer_id, lanPeersIDs[i])) {
+      stream.getTracks().forEach((track) => {
+        peers[lanPeersIDs[i]].addTrack(track, stream);
+      });
+      lanStreams[lanPeersIDs[i]].getTracks().forEach((track) => {
+        peers[peer_id].addTrack(track, lanStreams[lanPeersIDs[i]]);
+      });
+      connections[lanPeersIDs[i]][peer_id] = true;
+      connections[peer_id][lanPeersIDs[i]] = true;
+    }
+  }
+}
+
+function addLanStreamsToInternetPeers() {
+  const lanStreamsIDs = Object.keys(lanStreams);
+  for (let i = 0; i < lanStreamsIDs.length; i++) {
+    addLanStreamToInternetPeers(lanStreams[lanStreamsIDs[i]], lanStreamsIDs[i]);
+  }
+}
+
+function addLanStreamToInternetPeers(stream, peer_id) {
+  const internetPeersIDs = Object.keys(internetPeers);
+
+  for (let i = 0; i < internetPeersIDs.length; i++) {
+    if (!isConnected(peer_id, internetPeersIDs[i])) {
+      stream.getTracks().forEach((track) => {
+        peers[internetPeersIDs[i]].addTrack(track, stream);
+      });
+      internetStreams[internetPeersIDs[i]].getTracks().forEach((track) => {
+        peers[peer_id].addTrack(track, internetStreams[internetPeersIDs[i]]);
+      });
+      connections[internetPeersIDs[i]][peer_id] = true;
+      connections[peer_id][internetPeersIDs[i]] = true;
+    }
+  }
+}
+
+function isConnected(peer1, peer2) {
+  // console.log(connections);
+  if (!peer1 || !peer2)
+    logError("Unexpected undefiend", ["peer1", peer1, "peer2", peer2]);
+
+  if (!connections[peer1]) {
+    connections[peer1] = {};
+  }
+  if (!connections[peer2]) {
+    connections[peer2] = {};
+  }
+
+  if (!connections[peer1][peer2]) {
+    return false;
+  }
+  return true;
 }
 
 function handleSessionDescription(config) {
@@ -212,87 +309,45 @@ function extractPeers() {
   return IDs;
 }
 
-function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
-  if (
-    shouldCreateOffer ||
-    (isLeader && myIP === peerToIP[peer_id] && peers[peer_id])
-  ) {
-    createAndSendOffer(peer_id, peerConnection);
-  }
+function handleLeader() {
+  isLeader = true;
+  logDebug("Leader declaration", []);
 }
 
-function handlePeerIceCandidate(peer_id, candidate) {
-  if (candidate) {
-    signalingSocket.emit("relayICECandidate", {
-      peer_id,
-      ice_candidate: candidate,
-    });
-  } else {
-    // console.log("EVENT: Ice candidate - No candidate");
-  }
+function handleIPInfo(config) {
+  peerToIP = config.peerToIP;
+  // logDebug("Recieved IP info", ["peerToIP", peerToIP]);
 }
 
-/**
- * should be used in relaying streams
- */
-function handlePeerIceGathering(peerId, iceGatheringState) {
-  switch (iceGatheringState) {
-    case "gathering":
-      console.debug("Gathering");
-      break;
-    case "complete":
-      console.debug("Complete");
-      signalingSocket.emit("logIpInfo");
-      break;
-  }
-}
-
-function createAndSendOffer(peer_id, peerConnection) {
-  peerConnection.createOffer().then((local_description) => {
-    peerConnection.setLocalDescription(local_description).then(() => {
-      signalingSocket.emit("relaySessionDescription", {
-        peer_id,
-        session_description: local_description,
-      });
-    });
+function getPeerIP() {
+  let externalIP = "";
+  const pc = new RTCPeerConnection({
+    iceServers: ICE_SERVERS,
   });
-}
-
-function handlePeerTrack(peer_id, event) {
-  if (event.track.kind !== "video") return;
-  let remote_media = createMediaElement();
-  attachMediaStream(remote_media, event.streams[0]);
-  peerMediaElements[peer_id] = remote_media;
-  setTimeout(() => {
-    console.log("Got Track for " + peer_id);
-    console.log(peerToIP[peer_id]);
-    if (isLeader) {
-      if (peersIPs[peer_id] !== myIP) {
-        console.log(`${peersIPs[peer_id]} !== ${myIP}`);
-        internetStreams[peer_id] = event.streams[0];
-        // console.log(connections);
-        addInternetStreamsToLanPeers();
-        addLanStreamsToInternetPeers();
-      } else {
-        lanStreams[peer_id] = event.streams[0];
-        addLanStreamsToInternetPeers();
-        addInternetStreamsToLanPeers();
-      }
+  pc.createDataChannel("");
+  pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+  pc.onicecandidate = (ice) => {
+    // at the end of ice candidates stream (empty candidate) set the external IP and send it to the server
+    if (!ice || !ice.candidate || !ice.candidate.candidate) {
+      pc.close();
+      signalingSocket.emit(
+        "sendPeerIP",
+        {
+          peer_ip: externalIP,
+        },
+        (response) => {
+          logDebug(response, []);
+          setupLocalMedia(joinChannel);
+        }
+      );
+      myIP = externalIP;
+      return;
     }
-  }, 2000);
-}
-
-function createMediaElement() {
-  let mediaElement = document.createElement("video");
-  mediaElement.autoplay = true;
-  mediaElement.muted = true;
-  mediaElement.controls = true;
-  document.body.appendChild(mediaElement);
-  return mediaElement;
-}
-
-function attachMediaStream(element, stream) {
-  element.srcObject = stream;
+    let split = ice.candidate.candidate.split(" ");
+    if (!(split[7] === "host")) {
+      externalIP = split[4];
+    }
+  };
 }
 
 async function setupLocalMedia(callback) {
@@ -306,8 +361,7 @@ async function setupLocalMedia(callback) {
       callback();
     })
     .catch((err) => {
-      console.log("Error getting local media");
-      console.log(err);
+      logError(`Error getting local media {${err}}`, []);
     });
 }
 
@@ -315,85 +369,30 @@ function joinChannel() {
   signalingSocket.emit("join", CHANNEL);
 }
 
-function addInternetStreamsToLanPeers() {
-  const internetStreamsIDs = Object.keys(internetStreams);
-  // console.log(`internetStreamsIDs: ${internetStreamsIDs.length}`);
+/*************/
+/*** UTILS ***/
+/*************/
 
-  for (let i = 0; i < internetStreamsIDs.length; i++) {
-    addInternetStreamToLanPeers(
-      internetStreams[internetStreamsIDs[i]],
-      internetStreamsIDs[i]
-    );
-  }
+function logError(error, ...args) {
+  console.group(`ERROR: ${error}`);
+  for (let i = 0; i < args[0].length - 1; i = i + 2)
+    console.error(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
+  throw new Error("Stopping execution...");
 }
 
-function addInternetStreamToLanPeers(stream, peer_id) {
-  const lanPeersIDs = Object.keys(lanPeers);
-
-  for (let i = 0; i < lanPeersIDs.length; i++) {
-    if (!isConnected(peer_id, lanPeersIDs[i])) {
-      stream.getTracks().forEach((track) => {
-        peers[lanPeersIDs[i]].addTrack(track, stream);
-      });
-      lanStreams[lanPeersIDs[i]].getTracks().forEach((track) => {
-        peers[peer_id].addTrack(track, lanStreams[lanPeersIDs[i]]);
-      });
-      connections[lanPeersIDs[i]][peer_id] = true;
-      connections[peer_id][lanPeersIDs[i]] = true;
-    }
-  }
+function logWarning(warning, ...args) {
+  console.group(`WARNING: ${warning}`);
+  for (let i = 0; i < args[0].length - 1; i = i + 2)
+    console.warn(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
 }
 
-function addLanStreamsToInternetPeers() {
-  const lanStreamsIDs = Object.keys(lanStreams);
-  // console.log(`lanStreamsIDs: ${lanStreamsIDs.length}`);
-  // console.log(connections);
-  for (let i = 0; i < lanStreamsIDs.length; i++) {
-    addLanStreamToInternetPeers(lanStreams[lanStreamsIDs[i]], lanStreamsIDs[i]);
-  }
-}
-
-function addLanStreamToInternetPeers(stream, peer_id) {
-  const internetPeersIDs = Object.keys(internetPeers);
-
-  for (let i = 0; i < internetPeersIDs.length; i++) {
-    // console.log(`addLanStreamToInternetPeers --- ${i}`);
-    if (!isConnected(peer_id, internetPeersIDs[i])) {
-      // console.log(`addLanStreamToInternetPeers ---CONNECTING...--- ${i}`);
-      // console.log(`internet add lan ${peer_id} ${internetPeersIDs[i]}`);
-      stream.getTracks().forEach((track) => {
-        peers[internetPeersIDs[i]].addTrack(track, stream);
-      });
-      internetStreams[internetPeersIDs[i]].getTracks().forEach((track) => {
-        peers[peer_id].addTrack(track, internetStreams[internetPeersIDs[i]]);
-      });
-      connections[internetPeersIDs[i]][peer_id] = true;
-      connections[peer_id][internetPeersIDs[i]] = true;
-    }
-  }
-}
-
-function isConnected(peer1, peer2) {
-  // console.log(connections);
-  if (!peer1 || !peer2) {
-    console.group(`Unexpected undefined:`);
-    console.error(`\tpeer1: ${peer1}`);
-    console.error(`\tpeer2: ${peer2}`);
-    console.groupEnd();
-    return false;
-  }
-
-  if (!connections[peer1]) {
-    connections[peer1] = {};
-  }
-  if (!connections[peer2]) {
-    connections[peer2] = {};
-  }
-
-  if (!connections[peer1][peer2]) {
-    return false;
-  }
-  return true;
+function logDebug(debug, ...args) {
+  console.group(`DEBUG: ${debug}`);
+  for (let i = 0; i < args[0].length; i = i + 2)
+    console.debug(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
+  console.groupEnd();
 }
 
 init(); // Start the initialization process
