@@ -4,7 +4,17 @@
 const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${
   location.port ? `:${location.port}` : ""
 }`;
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const ICE_SERVERS = [
+  { url: "stun:stun.l.google.com:19302" },
+  { url: "stun:stun1.l.google.com:19302" },
+  { url: "stun:stun2.l.google.com:19302" },
+  { url: "stun:stun3.l.google.com:19302" },
+  { url: "stun:stun4.l.google.com:19302" },
+  { url: "stun:stun.ekiga.net" },
+  { url: "stun:stun.ideasip.com" },
+  { url: "stun:stun.rixtelecom.se" },
+  { url: "stun:stun.schlund.de" },
+];
 const CHANNEL = "global";
 
 /***************/
@@ -12,6 +22,7 @@ const CHANNEL = "global";
 /***************/
 let signalingSocket = null;
 
+let myNetmask = "";
 let myID = "";
 let myIP = "";
 let isLeader = false;
@@ -33,8 +44,16 @@ let connections = {};
 /**************/
 /*** CLIENT ***/
 /**************/
+// function getUserNetmask() {
+//   let userNetmask = prompt("Please enter you netmask (e.g., 255.255.255.0)");
+//   return userNetmask;
+// }
+
 function init() {
+  // myNetmask = getUserNetmask();
+  // logDebug(myNetmask, []);
   setupSignalingSocket();
+  setupLocalMedia();
   getPeerIP();
 }
 
@@ -147,13 +166,17 @@ function handlePeerTrack(peer_id, event) {
           "myIP",
           myIP,
         ]);
-        internetStreams[peer_id] = event.streams[0];
-        addInternetStreamsToLanPeers();
-        addLanStreamsToInternetPeers();
+        if (!internetStreams[peer_id]) {
+          internetStreams[peer_id] = [];
+        }
+        internetStreams[peer_id].push(event.streams[0]);
+
+        addStreamToPeers(event.streams[0], "LAN");
       } else {
         lanStreams[peer_id] = event.streams[0];
-        addLanStreamsToInternetPeers();
-        addInternetStreamsToLanPeers();
+
+        addStreamToPeers(event.streams[0], "INTERNET");
+        addOldInternetStreamsToPeer(peer_id);
       }
     }
   }, 2000);
@@ -171,74 +194,37 @@ function createMediaElement() {
 function attachMediaStream(element, stream) {
   element.srcObject = stream;
 }
-
-function addInternetStreamsToLanPeers() {
-  const internetStreamsIDs = Object.keys(internetStreams);
-  for (let i = 0; i < internetStreamsIDs.length; i++) {
-    addInternetStreamToLanPeers(
-      internetStreams[internetStreamsIDs[i]],
-      internetStreamsIDs[i]
-    );
+function addStreamToPeers(stream, to) {
+  const peersIDs =
+    to === "LAN" ? Object.keys(lanPeers) : Object.keys(internetPeers);
+  for (let i = 0; i < peersIDs.length; i++) {
+    console.log(peersIDs[i]);
+    addStreamToPeer(stream, peersIDs[i]);
   }
 }
 
-function addInternetStreamToLanPeers(stream, peer_id) {
-  const lanPeersIDs = Object.keys(lanPeers);
+function addStreamToPeer(stream, peer_id) {
+  console.log(peer_id);
+  console.log(peers[peer_id]);
 
-  for (let i = 0; i < lanPeersIDs.length; i++) {
-    if (!isConnected(peer_id, lanPeersIDs[i])) {
-      stream.getTracks().forEach((track) => {
-        peers[lanPeersIDs[i]].addTrack(track, stream);
-      });
-      lanStreams[lanPeersIDs[i]].getTracks().forEach((track) => {
-        peers[peer_id].addTrack(track, lanStreams[lanPeersIDs[i]]);
-      });
-      connections[lanPeersIDs[i]][peer_id] = true;
-      connections[peer_id][lanPeersIDs[i]] = true;
+  stream.getTracks().forEach((track) => {
+    peers[peer_id].addTrack(track, stream);
+  });
+}
+
+function addOldInternetStreamsToPeer(peer_id) {
+  const IPs = Object.keys(internetStreams);
+  for (let i = 0; i < IPs.length; i++) {
+    for (let j = 0; j < internetStreams[IPs].length; j++) {
+      addStreamToPeer(internetStreams[IPs[i]][j], peer_id);
     }
   }
 }
 
-function addLanStreamsToInternetPeers() {
-  const lanStreamsIDs = Object.keys(lanStreams);
-  for (let i = 0; i < lanStreamsIDs.length; i++) {
-    addLanStreamToInternetPeers(lanStreams[lanStreamsIDs[i]], lanStreamsIDs[i]);
-  }
-}
-
-function addLanStreamToInternetPeers(stream, peer_id) {
-  const internetPeersIDs = Object.keys(internetPeers);
-
-  for (let i = 0; i < internetPeersIDs.length; i++) {
-    if (!isConnected(peer_id, internetPeersIDs[i])) {
-      stream.getTracks().forEach((track) => {
-        peers[internetPeersIDs[i]].addTrack(track, stream);
-      });
-      internetStreams[internetPeersIDs[i]].getTracks().forEach((track) => {
-        peers[peer_id].addTrack(track, internetStreams[internetPeersIDs[i]]);
-      });
-      connections[internetPeersIDs[i]][peer_id] = true;
-      connections[peer_id][internetPeersIDs[i]] = true;
-    }
-  }
-}
-
-function isConnected(peer1, peer2) {
-  // console.log(connections);
-  if (!peer1 || !peer2)
-    logError("Unexpected undefiend", ["peer1", peer1, "peer2", peer2]);
-
-  if (!connections[peer1]) {
-    connections[peer1] = {};
-  }
-  if (!connections[peer2]) {
-    connections[peer2] = {};
-  }
-
-  if (!connections[peer1][peer2]) {
-    return false;
-  }
-  return true;
+function addOldLanStreamsToPeer(peer_id) {
+  const IPs = Object.keys(lanStreams);
+  for (let i = 0; i < IPs.length; i++)
+    addStreamToPeer(lanStreams[IPs[i]], peer_id);
 }
 
 function handleSessionDescription(config) {
@@ -324,11 +310,21 @@ function getPeerIP() {
   const pc = new RTCPeerConnection({
     iceServers: ICE_SERVERS,
   });
+  logDebug("Test1", []);
   pc.createDataChannel("");
+  logDebug("Test2", []);
   pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+  logDebug("Test3", []);
   pc.onicecandidate = (ice) => {
+    logDebug("Test4", []);
     // at the end of ice candidates stream (empty candidate) set the external IP and send it to the server
-    if (!ice || !ice.candidate || !ice.candidate.candidate) {
+    if (
+      !ice ||
+      !ice.candidate ||
+      !ice.candidate.candidate ||
+      externalIP !== ""
+    ) {
+      logDebug("Test5", []);
       pc.close();
       signalingSocket.emit(
         "sendPeerIP",
@@ -337,7 +333,7 @@ function getPeerIP() {
         },
         (response) => {
           logDebug(response, []);
-          setupLocalMedia(joinChannel);
+          joinChannel();
         }
       );
       myIP = externalIP;
@@ -350,15 +346,14 @@ function getPeerIP() {
   };
 }
 
-async function setupLocalMedia(callback) {
-  if (localMediaStream) return callback();
+async function setupLocalMedia() {
+  if (localMediaStream) return;
   await navigator.mediaDevices
     .getUserMedia({ audio: true, video: true })
     .then((stream) => {
       localMediaStream = stream;
       let local_media = createMediaElement();
       attachMediaStream(local_media, stream);
-      callback();
     })
     .catch((err) => {
       logError(`Error getting local media {${err}}`, []);
