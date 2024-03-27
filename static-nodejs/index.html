@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+
+<head>
+    <link rel="icon" href="images/webrtc.svg" sizes="any" type="image/svg+xml">
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #333;
+            color: #fff;
+            padding-top: 50px;
+
+        }
+
+        video {
+            width: 320px;
+            height: 240px;
+            border: 1px solid black;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 50px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: #444;
+            /* Slightly different to distinguish */
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        .netmask-input {
+            margin-right: 10px;
+            padding: 5px;
+        }
+    </style>
+    <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+    <script src="index.js"></script>
+</head>
+
+<body>
+    <div class="header">
+        <button id="Media">Media</button>
+        <button id="Leader">Leader</button>
+        <button id="SendInfo">SendInfo</button>
+        <button id="GetInfo">GetInfo</button>
+        <button id="Start">Start</button>
+        <button id="Stop">Stop</button>
+    </div>
+    <div id="streamContainer">
+
+    </div>
+    <div id="infoContainer">
+
+    </div>
+    <div class="footer">
+        <input type="text" class="netmask-input" placeholder="Enter your netmask" />
+        <button type="button">Submit</button>
+    </div>
+</body>
+
+</html>
