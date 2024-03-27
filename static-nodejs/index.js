@@ -26,6 +26,7 @@ let myIP = "";
 let myNetMask = "";
 let isLeader = false;
 
+let peers = {};
 let idToInfo;
 
 /**************/
@@ -97,6 +98,89 @@ function setupSignalingSocket() {
   });
   signalingSocket.on("clientID", handleClientID);
   signalingSocket.on("information", handleInformation);
+
+  signalingSocket.on("connectToPeer", connectToPeer);
+  signalingSocket.on("sessionDescription", handleSessionDescription);
+  signalingSocket.on("iceCandidate", handleIceCandidate);
+}
+
+function connectToPeer(config) {
+  const { peer_id, should_create_offer } = config;
+  if (peer_id in peers) return;
+
+  let peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  peers[peer_id] = peerConnection;
+
+  localMediaStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localMediaStream);
+  });
+
+  peerConnection.onnegotiationneeded = (event) => {
+    handlePeerNegotiation(peer_id, peerConnection, should_create_offer);
+  };
+
+  peerConnection.onicecandidate = (event) => {
+    handlePeerIceCandidate(peer_id, event.candidate);
+  };
+
+  peerConnection.ontrack = (event) => {
+    handlePeerTrack(peer_id, event);
+  };
+}
+
+function handlePeerNegotiation(peer_id, peerConnection, shouldCreateOffer) {
+  if (shouldCreateOffer) {
+    createAndSendOffer(peer_id, peerConnection);
+  }
+}
+
+function createAndSendOffer(peer_id, peerConnection) {
+  peerConnection.createOffer().then((local_description) => {
+    peerConnection.setLocalDescription(local_description).then(() => {
+      signalingSocket.emit("relaySessionDescription", {
+        peer_id,
+        session_description: local_description,
+      });
+    });
+  });
+}
+
+function handlePeerIceCandidate(peer_id, candidate) {
+  if (candidate) {
+    signalingSocket.emit("relayICECandidate", {
+      peer_id,
+      ice_candidate: candidate,
+    });
+  }
+}
+
+function handlePeerTrack(peer_id, event) {
+  if (event.track.kind !== "video") return;
+  createStreamCard(peer_id, event.streams[0]);
+}
+
+function handleSessionDescription(config) {
+  let peer_id = config.peer_id;
+  let desc = new RTCSessionDescription(config.session_description);
+
+  peers[peer_id].setRemoteDescription(desc).then(() => {
+    if (desc.type == "offer") {
+      peers[peer_id].createAnswer().then((local_description) => {
+        peers[peer_id].setLocalDescription(local_description).then(() => {
+          signalingSocket.emit("relaySessionDescription", {
+            peer_id,
+            session_description: local_description,
+          });
+        });
+      });
+    }
+  });
+}
+
+function handleIceCandidate(config) {
+  peers[config.peer_id].addIceCandidate(
+    new RTCIceCandidate(config.ice_candidate)
+  );
 }
 
 function handleClientID(config) {
@@ -106,7 +190,6 @@ function handleClientID(config) {
 
 function handleInformation(config) {
   idToInfo = config.idToInfo;
-  console.log(idToInfo);
   createInfoCards(idToInfo);
 }
 
@@ -116,14 +199,19 @@ async function setupLocalMedia() {
     .getUserMedia({ audio: true, video: true })
     .then((stream) => {
       localMediaStream = stream;
-      createStreamCard(stream);
-    })
-    .catch((err) => {
-      logError(`Error getting local media {${err}}`, []);
+      createStreamCard(myID, stream);
     });
+  // .catch((err) => {
+  //   logError(`Error getting local media {${err}}`, []);
+  // });
 }
 
-function createStreamCard(stream) {
+function createStreamCard(id, stream) {
+  let cardID = idToInfo[id][0];
+  let cardIP = idToInfo[id][1];
+  let cardNetmask = idToInfo[id][2];
+  let cardIsLeader = idToInfo[id][3];
+
   const container = document.getElementById("streamContainer");
 
   let StreamCard = document.createElement("div");
@@ -133,10 +221,10 @@ function createStreamCard(stream) {
   attachMediaStream(mediaElement, stream);
   StreamCard.appendChild(mediaElement); // Append the media element to the StreamCard
 
-  let idContent = document.createTextNode(`ID: ${myID}`);
-  let ipContent = document.createTextNode(`IP: ${myIP}`);
-  let netmaskContent = document.createTextNode(`Netmask: ${myNetMask}`);
-  let leaderContent = document.createTextNode(`Leader: ${isLeader}`);
+  let idContent = document.createTextNode(`ID: ${cardID}`);
+  let ipContent = document.createTextNode(`IP: ${cardIP}`);
+  let netmaskContent = document.createTextNode(`Netmask: ${cardNetmask}`);
+  let leaderContent = document.createTextNode(`Leader: ${cardIsLeader}`);
 
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(idContent);
@@ -167,6 +255,9 @@ function createInfoCards(idToInfo) {
   const container = document.getElementById("infoContainer");
 
   Object.entries(idToInfo).forEach(([key, [id, ip, netmask, leader]]) => {
+    if (id === myID) {
+      return;
+    }
     // Create the node card
     let infoCard = document.createElement("div");
     infoCard.id = `node-${id}`;
@@ -203,7 +294,6 @@ function createInfoCards(idToInfo) {
 }
 
 function handleUniConnection(id) {
-  console.log(`Uni-Connection for ID: ${id}`);
   signalingSocket.emit("uniConnect", {
     id1: myID,
     id2: id,
@@ -211,7 +301,6 @@ function handleUniConnection(id) {
 }
 
 function handleBiConnection(id) {
-  console.log(`Bi-Connection for ID: ${id}`);
   signalingSocket.emit("biConnect", {
     id1: myID,
     id2: id,

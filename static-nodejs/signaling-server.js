@@ -77,6 +77,13 @@ io.sockets.on("connection", (socket) => {
 
   socket.on("biConnect", handleBiConnection);
   socket.on("uniConnect", handleUniConnection);
+
+  socket.on("relaySessionDescription", (config) =>
+    handleSessionDescription(socket, config)
+  );
+  socket.on("relayICECandidate", (config) =>
+    handleIceCandidate(socket, config)
+  );
 });
 
 function handleSendInformation(config) {
@@ -88,34 +95,115 @@ function handleSendInformation(config) {
 }
 
 function handleRequestInformation(socket) {
-  let others = { ...idToInfo };
-  delete others[socket.id];
   socket.emit("information", {
-    idToInfo: others,
+    idToInfo: idToInfo,
   });
 }
 
-function handleStartSimulation() {}
+function handleStartSimulation() {
+  connectPlanned();
+}
+
+function connectPlanned() {
+  let ids1 = Object.keys(plannedConnections);
+  for (let i = 0; i < ids1.length; i++) {
+    let ids2 = Object.keys(plannedConnections[ids1[i]]);
+    for (let j = 0; j < ids2.length; j++) {
+      if (
+        plannedConnections[ids1[i]][ids2[j]] &&
+        plannedConnections[ids2[j]][ids1[i]]
+      ) {
+        biConnect(ids1[i], ids2[j]);
+        establishedConnections[ids1[i]][ids2[j]] = true;
+        establishedConnections[ids2[j]][ids1[i]] = true;
+      } else if (plannedConnections[ids1[i]][ids2[j]]) {
+        uniConnect(ids1[i], ids2[j]);
+        establishedConnections[ids1[i]][ids2[j]] = true;
+      }
+    }
+  }
+}
+
+function biConnect(id1, id2) {
+  sockets[id1].emit("connectToPeer", {
+    peer_id: id2,
+    should_create_offer: true,
+  });
+  sockets[id2].emit("connectToPeer", {
+    peer_id: id1,
+    should_create_offer: false,
+  });
+}
+
+function uniConnect(id1, id2) {}
 
 function handleStopSimulation() {}
 
 function handleBiConnection(config) {
   const { id1, id2 } = config;
-  if(!plannedConnections[id1]) plannedConnections[id1] = {};
-  if(!plannedConnections[id2]) plannedConnections[id2] = {};
-  if(!establishedConnections[id1]) establishedConnections[id1] = {};
-  if(!establishedConnections[id2]) establishedConnections[id2] = {};
+  if (!plannedConnections[id1]) plannedConnections[id1] = {};
+  if (!plannedConnections[id2]) plannedConnections[id2] = {};
+  if (!establishedConnections[id1]) establishedConnections[id1] = {};
+  if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
   plannedConnections[id2][id1] = true;
 }
 
 function handleUniConnection() {
   const { id1, id2 } = config;
-  if(!plannedConnections[id1]) plannedConnections[id1] = {};
-  if(!plannedConnections[id2]) plannedConnections[id2] = {};
-  if(!establishedConnections[id1]) establishedConnections[id1] = {};
-  if(!establishedConnections[id2]) establishedConnections[id2] = {};
+  if (!plannedConnections[id1]) plannedConnections[id1] = {};
+  if (!plannedConnections[id2]) plannedConnections[id2] = {};
+  if (!establishedConnections[id1]) establishedConnections[id1] = {};
+  if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
+}
+
+function handleSessionDescription(socket, config) {
+  if (!socket || !config || !config.peer_id || !config.session_description)
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "config",
+      config,
+      "config.peer_id",
+      config.peer_id,
+      "config.session_description",
+      config.session_description,
+    ]);
+
+  const { peer_id, session_description } = config;
+
+  if (peer_id in sockets) {
+    sockets[peer_id].emit("sessionDescription", {
+      peer_id: socket.id,
+      session_description: session_description,
+    });
+  } else {
+    logError("Peer not found", ["peer_id", peer_id]);
+  }
+}
+
+function handleIceCandidate(socket, config) {
+  if (!socket || !config || !config.peer_id || !config.ice_candidate)
+    logError("Unexpected undefined", [
+      "socket",
+      socket,
+      "config",
+      config,
+      "config.peer_id",
+      config.peer_id,
+      "config.ice_cadidate",
+      config.ice_candidate,
+    ]);
+
+  const { peer_id, ice_candidate } = config;
+
+  if (peer_id in sockets) {
+    sockets[peer_id].emit("iceCandidate", {
+      peer_id: socket.id,
+      ice_candidate: ice_candidate,
+    });
+  }
 }
 
 /*************/
