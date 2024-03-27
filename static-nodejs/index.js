@@ -107,6 +107,7 @@ function handleClientID(config) {
 function handleInformation(config) {
   idToInfo = config.idToInfo;
   console.log(idToInfo);
+  createInfoCards(idToInfo);
 }
 
 async function setupLocalMedia() {

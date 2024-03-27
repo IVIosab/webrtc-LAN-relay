@@ -84,8 +84,10 @@ function handleSendInformation(config) {
 }
 
 function handleRequestInformation(socket) {
+  let others = { ...idToInfo };
+  delete others[socket.id];
   socket.emit("information", {
-    idToInfo: idToInfo,
+    idToInfo: others,
   });
 }
 
