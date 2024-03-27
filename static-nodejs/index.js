@@ -204,12 +204,18 @@ function createInfoCards(idToInfo) {
 
 function handleUniConnection(id) {
   console.log(`Uni-Connection for ID: ${id}`);
-  // Implement the uni-connection logic here
+  signalingSocket.emit("uniConnect", {
+    id1: myID,
+    id2: id,
+  });
 }
 
 function handleBiConnection(id) {
   console.log(`Bi-Connection for ID: ${id}`);
-  // Implement the bi-connection logic here
+  signalingSocket.emit("biConnect", {
+    id1: myID,
+    id2: id,
+  });
 }
 
 /*************/

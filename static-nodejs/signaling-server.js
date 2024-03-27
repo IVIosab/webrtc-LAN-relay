@@ -27,7 +27,8 @@ let id = 1;
 let firstNodeID = "";
 
 let sockets = {};
-let connections = {};
+let plannedConnections = {};
+let establishedConnections = {};
 
 let peerToOrder = {};
 let peerToIP = {};
@@ -73,6 +74,9 @@ io.sockets.on("connection", (socket) => {
   socket.on("requestInformation", () => handleRequestInformation(socket));
   socket.on("startSimulation", handleStartSimulation);
   socket.on("stopSimulation", handleStopSimulation);
+
+  socket.on("biConnect", handleBiConnection);
+  socket.on("uniConnect", handleUniConnection);
 });
 
 function handleSendInformation(config) {
@@ -94,6 +98,25 @@ function handleRequestInformation(socket) {
 function handleStartSimulation() {}
 
 function handleStopSimulation() {}
+
+function handleBiConnection(config) {
+  const { id1, id2 } = config;
+  if(!plannedConnections[id1]) plannedConnections[id1] = {};
+  if(!plannedConnections[id2]) plannedConnections[id2] = {};
+  if(!establishedConnections[id1]) establishedConnections[id1] = {};
+  if(!establishedConnections[id2]) establishedConnections[id2] = {};
+  plannedConnections[id1][id2] = true;
+  plannedConnections[id2][id1] = true;
+}
+
+function handleUniConnection() {
+  const { id1, id2 } = config;
+  if(!plannedConnections[id1]) plannedConnections[id1] = {};
+  if(!plannedConnections[id2]) plannedConnections[id2] = {};
+  if(!establishedConnections[id1]) establishedConnections[id1] = {};
+  if(!establishedConnections[id2]) establishedConnections[id2] = {};
+  plannedConnections[id1][id2] = true;
+}
 
 /*************/
 /*** UTILS ***/
