@@ -105,15 +105,17 @@ function setupSignalingSocket() {
 }
 
 function connectToPeer(config) {
-  const { peer_id, should_create_offer } = config;
+  const { peer_id, should_create_offer, bi_connection } = config;
   if (peer_id in peers) return;
 
   let peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   peers[peer_id] = peerConnection;
 
-  localMediaStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localMediaStream);
-  });
+  if (bi_connection || (!bi_connection && should_create_offer)) {
+    localMediaStream.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localMediaStream);
+    });
+  }
 
   peerConnection.onnegotiationneeded = (event) => {
     handlePeerNegotiation(peer_id, peerConnection, should_create_offer);

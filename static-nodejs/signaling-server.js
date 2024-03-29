@@ -128,14 +128,27 @@ function biConnect(id1, id2) {
   sockets[id1].emit("connectToPeer", {
     peer_id: id2,
     should_create_offer: true,
+    bi_connection: true,
   });
   sockets[id2].emit("connectToPeer", {
     peer_id: id1,
     should_create_offer: false,
+    bi_connection: true,
   });
 }
 
-function uniConnect(id1, id2) {}
+function uniConnect(id1, id2) {
+  sockets[id1].emit("connectToPeer", {
+    peer_id: id2,
+    should_create_offer: true,
+    bi_connection: false,
+  });
+  sockets[id2].emit("connectToPeer", {
+    peer_id: id1,
+    should_create_offer: false,
+    bi_connection: false,
+  });
+}
 
 function handleStopSimulation() {}
 
@@ -149,7 +162,7 @@ function handleBiConnection(config) {
   plannedConnections[id2][id1] = true;
 }
 
-function handleUniConnection() {
+function handleUniConnection(config) {
   const { id1, id2 } = config;
   if (!plannedConnections[id1]) plannedConnections[id1] = {};
   if (!plannedConnections[id2]) plannedConnections[id2] = {};
