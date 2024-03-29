@@ -236,6 +236,13 @@ function createStreamCard(id, stream) {
   StreamCard.appendChild(netmaskContent);
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(leaderContent);
+  StreamCard.appendChild(document.createElement("br"));
+
+  let relayButton = document.createElement("button");
+  relayButton.textContent = "Relay";
+  relayButton.addEventListener("click", () => handleRelay(cardID, stream));
+
+  StreamCard.appendChild(relayButton);
 
   container.appendChild(StreamCard); // Append the StreamCard to the body
 }
@@ -309,9 +316,26 @@ function handleBiConnection(id) {
   });
 }
 
+function handleRelay(id, stream) {
+  let ids = Object.keys(idToInfo);
+
+  for (let i = 0; i < ids.length; i++) {
+    let info = idToInfo[ids[i]];
+    if (info[1] == myIP && info[0] !== myID) {
+      stream.getTracks().forEach((track) => {
+        console.log(info);
+        console.log(info[0]);
+        console.log(peers);
+        console.log(peers[info[0]]);
+        console.log(peers[ids[i]]);
+        peers[info[0]].addTrack(track, stream);
+      });
+    }
+  }
+}
+
 /*************/
 /*** UTILS ***/
-
 /*************/
 
 function getPeerIP() {
