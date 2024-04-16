@@ -32,13 +32,6 @@ let idToInfo;
 /*** CLIENT ***/
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
-  const mediaButton = document.getElementById("Media");
-  mediaButton.addEventListener("click", () => {
-    console.group("Media Click");
-    setupLocalMedia();
-    console.groupEnd();
-  });
-
   const leaderButton = document.getElementById("Leader");
   leaderButton.addEventListener("click", () => {
     console.group("Leader Click");
@@ -51,6 +44,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.group("Send Click");
     sendInformation();
     console.groupEnd();
+    leaderButton.remove();
+    sendInfoButton.remove();
   });
 
   const getInfoButton = document.getElementById("GetInfo");
@@ -58,7 +53,16 @@ document.addEventListener("DOMContentLoaded", () => {
     console.group("Get Click");
     getInformation();
     console.groupEnd();
+    getInfoButton.remove();
   });
+
+  // const mediaButton = document.getElementById("Media");
+  // mediaButton.addEventListener("click", () => {
+  //   console.group("Media Click");
+  //   setupLocalMedia();
+  //   console.groupEnd();
+  //   mediaButton.remove();
+  // });
 
   const startButton = document.querySelector('button[id="Start"]');
   startButton.addEventListener("click", () => {
@@ -151,6 +155,36 @@ function setupSignalingSocket() {
     handleIceCandidate(config);
     console.groupEnd();
   });
+
+  signalingSocket.on("starting", () => {
+    console.group("Starting Event!");
+    const infoCards = document.getElementById("infoContainer");
+    const startButton = document.querySelector('button[id="Start"]');
+    startButton.remove();
+    infoCards.remove();
+    console.groupEnd();
+  });
+
+  signalingSocket.on("stopping", () => {
+    console.group("Stopping Event!");
+    const stopButton = document.getElementById("Stop");
+    stopButton.remove();
+    console.groupEnd();
+  });
+
+  signalingSocket.on("biConnSecond", (config) => {
+    console.group("biConnSecond Event!");
+    const infoCard = document.getElementById(`node-${config.id}`);
+    infoCard.remove();
+    console.groupEnd();
+  });
+
+  signalingSocket.on("uniConnSecond", (config) => {
+    console.group("uniConnSecond Event!");
+    const biButt = document.getElementById(`node-${config.id}-biButton`);
+    biButt.remove();
+    console.groupEnd();
+  });
 }
 
 function connectToPeer(config) {
@@ -240,6 +274,7 @@ function handleClientID(config) {
 }
 
 function handleInformation(config) {
+  setupLocalMedia();
   idToInfo = config.idToInfo;
   createInfoCards(idToInfo);
 }
@@ -279,12 +314,13 @@ function createStreamCard(id, stream) {
   StreamCard.appendChild(leaderContent);
   StreamCard.appendChild(document.createElement("br"));
 
-  let relayButton = document.createElement("button");
-  relayButton.textContent = "Relay";
-  relayButton.addEventListener("click", () => handleRelay(cardID, stream));
+  if (id != myID) {
+    let relayButton = document.createElement("button");
+    relayButton.textContent = "Relay";
+    relayButton.addEventListener("click", () => handleRelay(cardID, stream));
 
-  StreamCard.appendChild(relayButton);
-
+    StreamCard.appendChild(relayButton);
+  }
   container.appendChild(StreamCard); // Append the StreamCard to the body
 }
 
@@ -327,6 +363,7 @@ function createInfoCards(idToInfo) {
     // Create the buttons
     let uniButton = document.createElement("button");
     uniButton.textContent = "Uni-Connection";
+    uniButton.id = `node-${id}-uniButton`;
     uniButton.addEventListener("click", () => {
       console.group("Uni Click");
       handleUniConnection(id);
@@ -337,6 +374,7 @@ function createInfoCards(idToInfo) {
 
     let biButton = document.createElement("button");
     biButton.textContent = "Bi-Connection";
+    biButton.id = `node-${id}-biButton`;
     biButton.addEventListener("click", () => {
       console.group("Bi Click");
       handleBiConnection(id);
@@ -345,19 +383,9 @@ function createInfoCards(idToInfo) {
       console.groupEnd();
     });
 
-    let noButton = document.createElement("button");
-    noButton.textContent = "No Connection";
-    noButton.addEventListener("click", () => {
-      console.group("No Click");
-      let element = document.getElementById(`node-${id}`);
-      element.remove();
-      console.groupEnd();
-    });
-
     // Append buttons to the node card
     infoCard.appendChild(uniButton);
     infoCard.appendChild(biButton);
-    infoCard.appendChild(noButton);
 
     // Append the node card to the container
     container.appendChild(infoCard);

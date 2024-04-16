@@ -94,6 +94,10 @@ function handleRequestInformation(socket) {
 }
 
 function handleStartSimulation() {
+  const socks = Object.keys(sockets);
+  for (let i = 0; i < socks.length; i++) {
+    sockets[socks[i]].emit("starting");
+  }
   connectPlanned();
 }
 
@@ -143,7 +147,12 @@ function uniConnect(id1, id2) {
   });
 }
 
-function handleStopSimulation() {}
+function handleStopSimulation() {
+  const socks = Object.keys(sockets);
+  for (let i = 0; i < socks.length; i++) {
+    sockets[socks[i]].emit("stopping");
+  }
+}
 
 function handleBiConnection(config) {
   const { id1, id2 } = config;
@@ -153,6 +162,10 @@ function handleBiConnection(config) {
   if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
   plannedConnections[id2][id1] = true;
+
+  sockets[id2].emit("biConnSecond", {
+    id: id1,
+  });
 }
 
 function handleUniConnection(config) {
@@ -162,6 +175,10 @@ function handleUniConnection(config) {
   if (!establishedConnections[id1]) establishedConnections[id1] = {};
   if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
+
+  sockets[id2].emit("uniConnSecond", {
+    id: id1,
+  });
 }
 
 function handleSessionDescription(socket, config) {
