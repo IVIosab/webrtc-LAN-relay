@@ -24,17 +24,12 @@ const io = socketIO.listen(server);
 /*** STORAGE ***/
 /***************/
 let id = 1;
-let firstNodeID = "";
 
 let sockets = {};
 let plannedConnections = {};
 let establishedConnections = {};
 
 let peerToOrder = {};
-let peerToIP = {};
-
-let ipToPeers = {}; // key: IP, value: list of peers with that IP
-let ipToLeader = {}; // key: IP, value: the elected leader of the IP group
 
 let idToInfo = {};
 
@@ -54,12 +49,10 @@ function acceptNewClient(socket) {
   peerToOrder[socket.id] = `[node-${id}]`;
   id++;
 
-  logDebug("Connection accepted", [
-    "ID",
-    socket.id,
-    "Peer",
-    peerToOrder[socket.id],
-  ]);
+  console.group("Connection Accepted");
+  console.debug("ID: ", socket.id);
+  console.debug("Peer: ", peerToOrder[socket.id]);
+  console.groupEnd();
 
   socket.emit("clientID", {
     id: socket.id,
@@ -87,9 +80,9 @@ io.sockets.on("connection", (socket) => {
 });
 
 function handleSendInformation(config) {
-  const { id, ip, netmask, leader } = config;
+  const { id, ip, leader } = config;
   if (!(id in idToInfo)) {
-    idToInfo[id] = [id, ip, netmask, leader];
+    idToInfo[id] = [id, ip, leader];
   }
   console.log(idToInfo);
 }
@@ -172,18 +165,12 @@ function handleUniConnection(config) {
 }
 
 function handleSessionDescription(socket, config) {
-  if (!socket || !config || !config.peer_id || !config.session_description)
-    logError("Unexpected undefined", [
-      "socket",
-      socket,
-      "config",
-      config,
-      "config.peer_id",
-      config.peer_id,
-      "config.session_description",
-      config.session_description,
-    ]);
-
+  if (!socket || !config || !config.peer_id || !config.session_description) {
+    console.group("Unexpected undefined");
+    console.error("socket: ", socket);
+    console.error("config: ", config);
+    console.groupEnd();
+  }
   const { peer_id, session_description } = config;
 
   if (peer_id in sockets) {
@@ -192,22 +179,19 @@ function handleSessionDescription(socket, config) {
       session_description: session_description,
     });
   } else {
-    logError("Peer not found", ["peer_id", peer_id]);
+    console.group("Peer Not Found");
+    console.error("peer_id: ", peer_id);
+    console.groupEnd();
   }
 }
 
 function handleIceCandidate(socket, config) {
-  if (!socket || !config || !config.peer_id || !config.ice_candidate)
-    logError("Unexpected undefined", [
-      "socket",
-      socket,
-      "config",
-      config,
-      "config.peer_id",
-      config.peer_id,
-      "config.ice_cadidate",
-      config.ice_candidate,
-    ]);
+  if (!socket || !config || !config.peer_id || !config.ice_candidate) {
+    console.group("Unexpected undefined");
+    console.error("socket: ", socket);
+    console.error("config: ", config);
+    console.groupEnd();
+  }
 
   const { peer_id, ice_candidate } = config;
 
@@ -217,45 +201,4 @@ function handleIceCandidate(socket, config) {
       ice_candidate: ice_candidate,
     });
   }
-}
-
-/*************/
-/*** UTILS ***/
-/*************/
-
-function logIpInfo(socket) {
-  socket.emit("sendIPInfo", {
-    peerToIP: peerToIP,
-  });
-  console.log("\n-------------------");
-  const IPs = Object.keys(ipToPeers);
-  for (let i = 0; i < IPs.length; i++) {
-    console.log(`${IPs[i]}: `);
-    for (let j = 0; j < ipToPeers[IPs[i]].length; j++) {
-      console.log(`  #${j + 1}: ${peerToOrder[ipToPeers[IPs[i]][j]]}`);
-    }
-  }
-  console.log("-------------------");
-}
-
-function logError(error, ...args) {
-  console.group(`ERROR: ${error}`);
-  for (let i = 0; i < args[0].length - 1; i = i + 2)
-    console.error(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
-  throw new Error("Stopping execution...");
-}
-
-function logWarning(warning, ...args) {
-  console.group(`WARNING: ${warning}`);
-  for (let i = 0; i < args[0].length - 1; i = i + 2)
-    console.warn(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
-}
-
-function logDebug(debug, ...args) {
-  console.group(`DEBUG: ${debug}`);
-  for (let i = 0; i < args[0].length; i = i + 2)
-    console.debug(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
 }

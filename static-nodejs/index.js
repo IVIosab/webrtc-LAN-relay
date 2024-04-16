@@ -23,7 +23,6 @@ let signalingSocket = null;
 let localMediaStream = null;
 let myID = "";
 let myIP = "";
-let myNetMask = "";
 let isLeader = false;
 
 let peers = {};
@@ -33,75 +32,125 @@ let idToInfo;
 /*** CLIENT ***/
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
-  const submitButton = document.querySelector('button[type="button"]');
-  submitButton.addEventListener("click", submitNetmask);
-
   const mediaButton = document.getElementById("Media");
-  mediaButton.addEventListener("click", setupLocalMedia);
+  mediaButton.addEventListener("click", () => {
+    console.group("Media Click");
+    setupLocalMedia();
+    console.groupEnd();
+  });
 
   const leaderButton = document.getElementById("Leader");
-  leaderButton.addEventListener("click", declareLeader);
+  leaderButton.addEventListener("click", () => {
+    console.group("Leader Click");
+    declareLeader();
+    console.groupEnd();
+  });
 
   const sendInfoButton = document.getElementById("SendInfo");
-  sendInfoButton.addEventListener("click", sendInformation);
+  sendInfoButton.addEventListener("click", () => {
+    console.group("Send Click");
+    sendInformation();
+    console.groupEnd();
+  });
 
   const getInfoButton = document.getElementById("GetInfo");
-  getInfoButton.addEventListener("click", getInformation);
+  getInfoButton.addEventListener("click", () => {
+    console.group("Get Click");
+    getInformation();
+    console.groupEnd();
+  });
 
   const startButton = document.querySelector('button[id="Start"]');
-  startButton.addEventListener("click", startSimulation);
+  startButton.addEventListener("click", () => {
+    console.group("Start Click");
+    startSimulation();
+    console.groupEnd();
+  });
 
   const stopButton = document.getElementById("Stop");
-  stopButton.addEventListener("click", stopSimulation);
+  stopButton.addEventListener("click", () => {
+    console.group("Stop Click");
+    stopSimulation();
+    console.groupEnd();
+  });
 });
-
-function submitNetmask() {
-  const inputElement = document.querySelector(".netmask-input");
-  myNetMask = inputElement.value;
-  removeElement("footer");
-}
 
 function declareLeader() {
   isLeader = true;
 }
 
-function getInformation() {
-  signalingSocket.emit("requestInformation");
-}
-
 function startSimulation() {
+  console.log("Emitting startSimulation...");
   signalingSocket.emit("startSimulation");
 }
 
 function stopSimulation() {
+  console.log("Emitting stopSimulation...");
   signalingSocket.emit("stopSimulation");
 }
 
 function sendInformation() {
+  console.log("Emitting sendInformation...", {
+    ip: myIP,
+    id: myID,
+    leader: isLeader,
+  });
   signalingSocket.emit("sendInformation", {
     ip: myIP,
     id: myID,
-    netmask: myNetMask,
     leader: isLeader,
   });
+}
+
+function getInformation() {
+  console.log("Emitting requestInfomration...");
+  signalingSocket.emit("requestInformation");
 }
 
 async function init() {
   await getPeerIP();
   setupSignalingSocket();
+  // setupLocalMedia();
 }
 
 function setupSignalingSocket() {
   signalingSocket = io(SIGNALING_SERVER);
-  signalingSocket.on("connect", () => {
-    console.log("Connected to signaling server");
-  });
-  signalingSocket.on("clientID", handleClientID);
-  signalingSocket.on("information", handleInformation);
 
-  signalingSocket.on("connectToPeer", connectToPeer);
-  signalingSocket.on("sessionDescription", handleSessionDescription);
-  signalingSocket.on("iceCandidate", handleIceCandidate);
+  signalingSocket.on("connect", () => {
+    console.group("connect Event!");
+    console.log("Connected to signaling server");
+    console.groupEnd();
+  });
+
+  signalingSocket.on("clientID", (config) => {
+    console.group("clientID Event!");
+    handleClientID(config);
+    console.groupEnd();
+  });
+
+  signalingSocket.on("information", (config) => {
+    console.group("information Event!");
+    handleInformation(config);
+    console.groupEnd();
+  });
+
+  signalingSocket.on("connectToPeer", (config) => {
+    console.group("connectToPeer Event!");
+    connectToPeer(config);
+    console.groupEnd();
+  });
+
+  signalingSocket.on("sessionDescription", (config) => {
+    console.group("sessionDescription Event!");
+    handleSessionDescription(config);
+    console.groupEnd();
+  });
+
+  signalingSocket.on("iceCandidate", (config) => {
+    console.group("iceCandidate Event!");
+    handleIceCandidate(config);
+    console.groupEnd();
+  });
 }
 
 function connectToPeer(config) {
@@ -203,17 +252,12 @@ async function setupLocalMedia() {
       localMediaStream = stream;
       createStreamCard(myID, stream);
     });
-  // .catch((err) => {
-  //   logError(`Error getting local media {${err}}`, []);
-  // });
 }
 
 function createStreamCard(id, stream) {
   let cardID = idToInfo[id][0];
   let cardIP = idToInfo[id][1];
-  let cardNetmask = idToInfo[id][2];
-  let cardIsLeader = idToInfo[id][3];
-
+  let cardIsLeader = idToInfo[id][2];
   const container = document.getElementById("streamContainer");
 
   let StreamCard = document.createElement("div");
@@ -225,15 +269,12 @@ function createStreamCard(id, stream) {
 
   let idContent = document.createTextNode(`ID: ${cardID}`);
   let ipContent = document.createTextNode(`IP: ${cardIP}`);
-  let netmaskContent = document.createTextNode(`Netmask: ${cardNetmask}`);
   let leaderContent = document.createTextNode(`Leader: ${cardIsLeader}`);
 
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(idContent);
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(ipContent);
-  StreamCard.appendChild(document.createElement("br"));
-  StreamCard.appendChild(netmaskContent);
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(leaderContent);
   StreamCard.appendChild(document.createElement("br"));
@@ -263,7 +304,7 @@ function createInfoCards(idToInfo) {
   // Find the container where you want to append the nodes
   const container = document.getElementById("infoContainer");
 
-  Object.entries(idToInfo).forEach(([key, [id, ip, netmask, leader]]) => {
+  Object.entries(idToInfo).forEach(([key, [id, ip, leader]]) => {
     if (id === myID) {
       return;
     }
@@ -275,11 +316,10 @@ function createInfoCards(idToInfo) {
     // Create the info text nodes
     let idText = document.createTextNode(`ID: ${id}`);
     let ipText = document.createTextNode(`IP: ${ip}`);
-    let netmaskText = document.createTextNode(`Netmask: ${netmask}`);
     let leaderText = document.createTextNode(`Leader: ${leader}`);
 
     // Append the text nodes to the card with line breaks
-    [idText, ipText, netmaskText, leaderText].forEach((textNode) => {
+    [idText, ipText, leaderText].forEach((textNode) => {
       infoCard.appendChild(textNode);
       infoCard.appendChild(document.createElement("br"));
     });
@@ -287,15 +327,37 @@ function createInfoCards(idToInfo) {
     // Create the buttons
     let uniButton = document.createElement("button");
     uniButton.textContent = "Uni-Connection";
-    uniButton.addEventListener("click", () => handleUniConnection(id));
+    uniButton.addEventListener("click", () => {
+      console.group("Uni Click");
+      handleUniConnection(id);
+      let element = document.getElementById(`node-${id}`);
+      element.remove();
+      console.groupEnd();
+    });
 
     let biButton = document.createElement("button");
     biButton.textContent = "Bi-Connection";
-    biButton.addEventListener("click", () => handleBiConnection(id));
+    biButton.addEventListener("click", () => {
+      console.group("Bi Click");
+      handleBiConnection(id);
+      let element = document.getElementById(`node-${id}`);
+      element.remove();
+      console.groupEnd();
+    });
+
+    let noButton = document.createElement("button");
+    noButton.textContent = "No Connection";
+    noButton.addEventListener("click", () => {
+      console.group("No Click");
+      let element = document.getElementById(`node-${id}`);
+      element.remove();
+      console.groupEnd();
+    });
 
     // Append buttons to the node card
     infoCard.appendChild(uniButton);
     infoCard.appendChild(biButton);
+    infoCard.appendChild(noButton);
 
     // Append the node card to the container
     container.appendChild(infoCard);
@@ -303,6 +365,7 @@ function createInfoCards(idToInfo) {
 }
 
 function handleUniConnection(id) {
+  console.log("Emitting uniConnect...", { id1: myID, id2: id });
   signalingSocket.emit("uniConnect", {
     id1: myID,
     id2: id,
@@ -310,6 +373,7 @@ function handleUniConnection(id) {
 }
 
 function handleBiConnection(id) {
+  console.log("Emitting biConnect...", { id1: myID, id2: id });
   signalingSocket.emit("biConnect", {
     id1: myID,
     id2: id,
@@ -362,33 +426,6 @@ function getPeerIP() {
       }
     };
   });
-}
-
-function logError(error, ...args) {
-  console.group(`ERROR: ${error}`);
-  for (let i = 0; i < args[0].length - 1; i = i + 2)
-    console.error(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
-  throw new Error("Stopping execution...");
-}
-
-function logWarning(warning, ...args) {
-  console.group(`WARNING: ${warning}`);
-  for (let i = 0; i < args[0].length - 1; i = i + 2)
-    console.warn(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
-}
-
-function logDebug(debug, ...args) {
-  console.group(`DEBUG: ${debug}`);
-  for (let i = 0; i < args[0].length; i = i + 2)
-    console.debug(`\t\t${args[0][i]}: ${args[0][i + 1]}`);
-  console.groupEnd();
-}
-
-function removeElement(classname) {
-  const element = document.querySelector(`.${classname}`);
-  element.remove();
 }
 
 init(); // Start the initialization process
