@@ -32,23 +32,11 @@ document.addEventListener("DOMContentLoaded", () => {
     startSimulation();
     console.groupEnd();
   });
-
-  const stopButton = document.getElementById("Stop");
-  stopButton.addEventListener("click", () => {
-    console.group("Stop Click");
-    stopSimulation();
-    console.groupEnd();
-  });
 });
 
 function startSimulation() {
   console.log("Emitting startSimulation...");
   signalingSocket.emit("startSimulation");
-}
-
-function stopSimulation() {
-  console.log("Emitting stopSimulation...");
-  signalingSocket.emit("stopSimulation");
 }
 
 function sendInformation() {
@@ -111,13 +99,6 @@ function setupSignalingSocket() {
     console.group("Starting Event!");
     const startButton = document.querySelector('button[id="Start"]');
     startButton.remove();
-    console.groupEnd();
-  });
-
-  signalingSocket.on("stopping", () => {
-    console.group("Stopping Event!");
-    const stopButton = document.getElementById("Stop");
-    stopButton.remove();
     console.groupEnd();
   });
 }

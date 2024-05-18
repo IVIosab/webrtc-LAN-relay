@@ -73,7 +73,6 @@ io.sockets.on("connection", (socket) => {
   }, 1000);
 
   socket.on("startSimulation", handleStartSimulation);
-  socket.on("stopSimulation", handleStopSimulation);
 
   socket.on("relaySessionDescription", (config) =>
     handleSessionDescription(socket, config)
@@ -164,13 +163,6 @@ function uniConnect(id1, id2) {
     should_create_offer: false,
     bi_connection: false,
   });
-}
-
-function handleStopSimulation() {
-  const socks = Object.keys(sockets);
-  for (let i = 0; i < socks.length; i++) {
-    sockets[socks[i]].emit("stopping");
-  }
 }
 
 function handleBiConnection(id1, id2) {
