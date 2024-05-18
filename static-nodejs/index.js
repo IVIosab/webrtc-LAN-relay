@@ -121,10 +121,8 @@ function setupSignalingSocket() {
 
   signalingSocket.on("starting", () => {
     console.group("Starting Event!");
-    const infoCards = document.getElementById("infoContainer");
     const startButton = document.querySelector('button[id="Start"]');
     startButton.remove();
-    infoCards.remove();
     console.groupEnd();
   });
 
@@ -132,20 +130,6 @@ function setupSignalingSocket() {
     console.group("Stopping Event!");
     const stopButton = document.getElementById("Stop");
     stopButton.remove();
-    console.groupEnd();
-  });
-
-  signalingSocket.on("biConnSecond", (config) => {
-    console.group("biConnSecond Event!");
-    const infoCard = document.getElementById(`node-${config.id}`);
-    infoCard.remove();
-    console.groupEnd();
-  });
-
-  signalingSocket.on("uniConnSecond", (config) => {
-    console.group("uniConnSecond Event!");
-    const biButt = document.getElementById(`node-${config.id}-biButton`);
-    biButt.remove();
     console.groupEnd();
   });
 }
@@ -204,7 +188,7 @@ function handlePeerIceCandidate(peer_id, candidate) {
 
 function handlePeerTrack(peer_id, event) {
   if (event.track.kind !== "video") return;
-  createStreamCard(peer_id, event.streams[0]);
+  createStreamCard(peer_id, "...", false, event.streams[0]);
 }
 
 function handleSessionDescription(config) {
@@ -238,7 +222,6 @@ function handleClientID(config) {
 
 function handleInformation(config) {
   idToInfo = config.idToInfo;
-  createInfoCards(idToInfo);
 }
 
 async function setupLocalMedia() {
@@ -286,78 +269,6 @@ function createMediaElement() {
   mediaElement.muted = true; // You might not want to mute if you want to hear the audio
   mediaElement.controls = true;
   return mediaElement;
-}
-
-function createInfoCards(idToInfo) {
-  // Find the container where you want to append the nodes
-  const container = document.getElementById("infoContainer");
-
-  Object.entries(idToInfo).forEach(([key, [id, ip, leader]]) => {
-    if (id === myID) {
-      return;
-    }
-    // Create the node card
-    let infoCard = document.createElement("div");
-    infoCard.id = `node-${id}`;
-    infoCard.classList.add("node-card");
-
-    // Create the info text nodes
-    let idText = document.createTextNode(`ID: ${id}`);
-    let ipText = document.createTextNode(`IP: ${ip}`);
-    let leaderText = document.createTextNode(`Leader: ${leader}`);
-
-    // Append the text nodes to the card with line breaks
-    [idText, ipText, leaderText].forEach((textNode) => {
-      infoCard.appendChild(textNode);
-      infoCard.appendChild(document.createElement("br"));
-    });
-
-    // Create the buttons
-    let uniButton = document.createElement("button");
-    uniButton.textContent = "Uni-Connection";
-    uniButton.id = `node-${id}-uniButton`;
-    uniButton.addEventListener("click", () => {
-      console.group("Uni Click");
-      handleUniConnection(id);
-      let element = document.getElementById(`node-${id}`);
-      element.remove();
-      console.groupEnd();
-    });
-
-    let biButton = document.createElement("button");
-    biButton.textContent = "Bi-Connection";
-    biButton.id = `node-${id}-biButton`;
-    biButton.addEventListener("click", () => {
-      console.group("Bi Click");
-      handleBiConnection(id);
-      let element = document.getElementById(`node-${id}`);
-      element.remove();
-      console.groupEnd();
-    });
-
-    // Append buttons to the node card
-    infoCard.appendChild(uniButton);
-    infoCard.appendChild(biButton);
-
-    // Append the node card to the container
-    container.appendChild(infoCard);
-  });
-}
-
-function handleUniConnection(id) {
-  console.log("Emitting uniConnect...", { id1: myID, id2: id });
-  signalingSocket.emit("uniConnect", {
-    id1: myID,
-    id2: id,
-  });
-}
-
-function handleBiConnection(id) {
-  console.log("Emitting biConnect...", { id1: myID, id2: id });
-  signalingSocket.emit("biConnect", {
-    id1: myID,
-    id2: id,
-  });
 }
 
 function handleRelay(id, stream) {

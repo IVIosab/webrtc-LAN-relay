@@ -72,9 +72,6 @@ io.sockets.on("connection", (socket) => {
   socket.on("startSimulation", handleStartSimulation);
   socket.on("stopSimulation", handleStopSimulation);
 
-  socket.on("biConnect", handleBiConnection);
-  socket.on("uniConnect", handleUniConnection);
-
   socket.on("relaySessionDescription", (config) =>
     handleSessionDescription(socket, config)
   );
@@ -90,9 +87,15 @@ function handleSendInformation(socket, config) {
   }
 
   if (!(socket.id in idToInfo)) {
+    let ids = Object.keys(idToInfo);
+    for (let i = 0; i < ids.length; i++) {
+      handleBiConnection(socket.id, ids[i]);
+    }
     idToInfo[socket.id] = [socket.id, ip, leaders[ip] === socket.id];
   }
-  console.log(idToInfo);
+  console.log("info", idToInfo);
+  console.log("planned", plannedConnections);
+  connectPlanned();
 }
 
 function handleRequestInformation(socket) {
@@ -116,12 +119,17 @@ function connectPlanned() {
     for (let j = 0; j < ids2.length; j++) {
       if (
         plannedConnections[ids1[i]][ids2[j]] &&
-        plannedConnections[ids2[j]][ids1[i]]
+        plannedConnections[ids2[j]][ids1[i]] &&
+        establishedConnections[ids1[i]][ids2[j]] === undefined &&
+        establishedConnections[ids2[j]][ids1[i]] === undefined
       ) {
         biConnect(ids1[i], ids2[j]);
         establishedConnections[ids1[i]][ids2[j]] = true;
         establishedConnections[ids2[j]][ids1[i]] = true;
-      } else if (plannedConnections[ids1[i]][ids2[j]]) {
+      } else if (
+        plannedConnections[ids1[i]][ids2[j]] &&
+        establishedConnections[ids1[i]][ids2[j]] === undefined
+      ) {
         uniConnect(ids1[i], ids2[j]);
         establishedConnections[ids1[i]][ids2[j]] = true;
       }
@@ -162,31 +170,21 @@ function handleStopSimulation() {
   }
 }
 
-function handleBiConnection(config) {
-  const { id1, id2 } = config;
+function handleBiConnection(id1, id2) {
   if (!plannedConnections[id1]) plannedConnections[id1] = {};
   if (!plannedConnections[id2]) plannedConnections[id2] = {};
   if (!establishedConnections[id1]) establishedConnections[id1] = {};
   if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
   plannedConnections[id2][id1] = true;
-
-  sockets[id2].emit("biConnSecond", {
-    id: id1,
-  });
 }
 
-function handleUniConnection(config) {
-  const { id1, id2 } = config;
+function handleUniConnection(id1, id2) {
   if (!plannedConnections[id1]) plannedConnections[id1] = {};
   if (!plannedConnections[id2]) plannedConnections[id2] = {};
   if (!establishedConnections[id1]) establishedConnections[id1] = {};
   if (!establishedConnections[id2]) establishedConnections[id2] = {};
   plannedConnections[id1][id2] = true;
-
-  sockets[id2].emit("uniConnSecond", {
-    id: id1,
-  });
 }
 
 function handleSessionDescription(socket, config) {
