@@ -33,6 +33,8 @@ let peerToOrder = {};
 
 let idToInfo = {};
 
+let leaders = {};
+
 /**************/
 /*** SERVER ***/
 /**************/
@@ -62,7 +64,9 @@ function acceptNewClient(socket) {
 io.sockets.on("connection", (socket) => {
   acceptNewClient(socket);
 
-  socket.on("sendInformation", handleSendInformation);
+  socket.on("sendInformation", (config) =>
+    handleSendInformation(socket, config)
+  );
 
   socket.on("requestInformation", () => handleRequestInformation(socket));
   socket.on("startSimulation", handleStartSimulation);
@@ -79,10 +83,14 @@ io.sockets.on("connection", (socket) => {
   );
 });
 
-function handleSendInformation(config) {
-  const { id, ip, leader } = config;
-  if (!(id in idToInfo)) {
-    idToInfo[id] = [id, ip, leader];
+function handleSendInformation(socket, config) {
+  const { ip } = config;
+  if (!(ip in leaders)) {
+    leaders[ip] = socket.id;
+  }
+
+  if (!(socket.id in idToInfo)) {
+    idToInfo[socket.id] = [socket.id, ip, leaders[ip] === socket.id];
   }
   console.log(idToInfo);
 }

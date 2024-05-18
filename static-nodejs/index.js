@@ -1,18 +1,13 @@
 const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${
   location.port ? `:${location.port}` : ""
 }`;
-const CHANNEL = "global";
 const PORT = 8080;
 const ICE_SERVERS = [
   { url: "stun:stun.l.google.com:19302" },
-  { url: "stun:stun1.l.google.com:19302" },
-  { url: "stun:stun2.l.google.com:19302" },
-  { url: "stun:stun3.l.google.com:19302" },
-  { url: "stun:stun4.l.google.com:19302" },
-  { url: "stun:stun.ekiga.net" },
-  { url: "stun:stun.ideasip.com" },
-  { url: "stun:stun.rixtelecom.se" },
-  { url: "stun:stun.schlund.de" },
+  // { url: "stun:stun1.l.google.com:19302" },
+  // { url: "stun:stun2.l.google.com:19302" },
+  // { url: "stun:stun3.l.google.com:19302" },
+  // { url: "stun:stun4.l.google.com:19302" },
 ];
 
 /***************/
@@ -23,7 +18,6 @@ let signalingSocket = null;
 let localMediaStream = null;
 let myID = "";
 let myIP = "";
-let isLeader = false;
 
 let peers = {};
 let idToInfo;
@@ -32,22 +26,6 @@ let idToInfo;
 /*** CLIENT ***/
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
-  const leaderButton = document.getElementById("Leader");
-  leaderButton.addEventListener("click", () => {
-    console.group("Leader Click");
-    declareLeader();
-    console.groupEnd();
-  });
-
-  const sendInfoButton = document.getElementById("SendInfo");
-  sendInfoButton.addEventListener("click", () => {
-    console.group("Send Click");
-    sendInformation();
-    console.groupEnd();
-    leaderButton.remove();
-    sendInfoButton.remove();
-  });
-
   const getInfoButton = document.getElementById("GetInfo");
   getInfoButton.addEventListener("click", () => {
     console.group("Get Click");
@@ -55,14 +33,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.groupEnd();
     getInfoButton.remove();
   });
-
-  // const mediaButton = document.getElementById("Media");
-  // mediaButton.addEventListener("click", () => {
-  //   console.group("Media Click");
-  //   setupLocalMedia();
-  //   console.groupEnd();
-  //   mediaButton.remove();
-  // });
 
   const startButton = document.querySelector('button[id="Start"]');
   startButton.addEventListener("click", () => {
@@ -79,10 +49,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-function declareLeader() {
-  isLeader = true;
-}
-
 function startSimulation() {
   console.log("Emitting startSimulation...");
   signalingSocket.emit("startSimulation");
@@ -96,13 +62,9 @@ function stopSimulation() {
 function sendInformation() {
   console.log("Emitting sendInformation...", {
     ip: myIP,
-    id: myID,
-    leader: isLeader,
   });
   signalingSocket.emit("sendInformation", {
     ip: myIP,
-    id: myID,
-    leader: isLeader,
   });
 }
 
@@ -114,7 +76,6 @@ function getInformation() {
 async function init() {
   await getPeerIP();
   setupSignalingSocket();
-  // setupLocalMedia();
 }
 
 function setupSignalingSocket() {
@@ -130,6 +91,8 @@ function setupSignalingSocket() {
     console.group("clientID Event!");
     handleClientID(config);
     console.groupEnd();
+    setupLocalMedia();
+    sendInformation();
   });
 
   signalingSocket.on("information", (config) => {
@@ -274,7 +237,6 @@ function handleClientID(config) {
 }
 
 function handleInformation(config) {
-  setupLocalMedia();
   idToInfo = config.idToInfo;
   createInfoCards(idToInfo);
 }
@@ -285,14 +247,11 @@ async function setupLocalMedia() {
     .getUserMedia({ audio: true, video: true })
     .then((stream) => {
       localMediaStream = stream;
-      createStreamCard(myID, stream);
+      createStreamCard(myID, myIP, false, stream);
     });
 }
 
-function createStreamCard(id, stream) {
-  let cardID = idToInfo[id][0];
-  let cardIP = idToInfo[id][1];
-  let cardIsLeader = idToInfo[id][2];
+function createStreamCard(cardID, cardIP, cardIsLeader, stream) {
   const container = document.getElementById("streamContainer");
 
   let StreamCard = document.createElement("div");
@@ -314,13 +273,6 @@ function createStreamCard(id, stream) {
   StreamCard.appendChild(leaderContent);
   StreamCard.appendChild(document.createElement("br"));
 
-  if (id != myID) {
-    let relayButton = document.createElement("button");
-    relayButton.textContent = "Relay";
-    relayButton.addEventListener("click", () => handleRelay(cardID, stream));
-
-    StreamCard.appendChild(relayButton);
-  }
   container.appendChild(StreamCard); // Append the StreamCard to the body
 }
 
@@ -432,7 +384,6 @@ function handleRelay(id, stream) {
 
 function getPeerIP() {
   return new Promise((resolve, reject) => {
-    console.log("Getting Peer IP");
     let externalIP = "";
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pc.createDataChannel("");
@@ -446,7 +397,9 @@ function getPeerIP() {
       ) {
         pc.close();
         myIP = externalIP;
+        console.log("My IP: ", myIP);
         resolve(externalIP); // Resolve the promise here
+        return;
       }
       let split = ice.candidate.candidate.split(" ");
       if (split[7] !== "host") {
