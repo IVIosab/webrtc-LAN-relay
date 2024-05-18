@@ -71,10 +71,7 @@ function setupSignalingSocket() {
   });
 
   signalingSocket.on("information", (config) => {
-    console.group("information Event!");
-    console.log(config.idToInfo);
     handleInformation(config);
-    console.groupEnd();
   });
 
   signalingSocket.on("connectToPeer", (config) => {
@@ -191,6 +188,23 @@ function handleClientID(config) {
 
 function handleInformation(config) {
   idToInfo = config.idToInfo;
+  let ids = Object.keys(idToInfo);
+  for (let i = 0; i < ids.length; i++) {
+    let streamCard = document.getElementById(`streamCard-${ids[i]}`);
+    if (!streamCard) continue;
+    let streamCardIP = document.getElementById(`streamCard-${ids[i]}-ip`);
+    if (streamCardIP === idToInfo[ids[i]][1]) continue;
+    else {
+      streamCardIP.innerText = idToInfo[ids[i]][1];
+    }
+    let streamCardIsLeader = document.getElementById(
+      `streamCard-${ids[i]}-leader`
+    );
+    if (streamCardIsLeader === idToInfo[ids[i]][2]) continue;
+    else {
+      streamCardIsLeader.innerText = idToInfo[ids[i]][2];
+    }
+  }
 }
 
 async function setupLocalMedia() {
@@ -208,14 +222,21 @@ function createStreamCard(cardID, cardIP, cardIsLeader, stream) {
 
   let StreamCard = document.createElement("div");
   StreamCard.classList.add("node-card"); // Add a class for potential styling
+  StreamCard.setAttribute("id", `streamCard-${cardID}`);
 
   let mediaElement = createMediaElement();
   attachMediaStream(mediaElement, stream);
   StreamCard.appendChild(mediaElement); // Append the media element to the StreamCard
 
-  let idContent = document.createTextNode(`ID: ${cardID}`);
-  let ipContent = document.createTextNode(`IP: ${cardIP}`);
-  let leaderContent = document.createTextNode(`Leader: ${cardIsLeader}`);
+  let idContent = document.createElement("span");
+  idContent.setAttribute("id", `streamCard-${cardID}-id`);
+  idContent.innerHTML = `ID: ${cardID}`;
+  let ipContent = document.createElement("span");
+  ipContent.setAttribute("id", `streamCard-${cardID}-ip`);
+  ipContent.innerHTML = `IP: ${cardIP}`;
+  let leaderContent = document.createElement("span");
+  leaderContent.setAttribute("id", `streamCard-${cardID}-leader`);
+  leaderContent.innerHTML = `Leader: ${cardIsLeader}`;
 
   StreamCard.appendChild(document.createElement("br"));
   StreamCard.appendChild(idContent);
