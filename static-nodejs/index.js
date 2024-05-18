@@ -26,18 +26,8 @@ let idToInfo;
 /*** CLIENT ***/
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
-  const startButton = document.querySelector('button[id="Start"]');
-  startButton.addEventListener("click", () => {
-    console.group("Start Click");
-    startSimulation();
-    console.groupEnd();
-  });
+  init();
 });
-
-function startSimulation() {
-  console.log("Emitting startSimulation...");
-  signalingSocket.emit("startSimulation");
-}
 
 function sendInformation() {
   console.log("Emitting sendInformation...", {
@@ -89,13 +79,6 @@ function setupSignalingSocket() {
   signalingSocket.on("iceCandidate", (config) => {
     console.group("iceCandidate Event!");
     handleIceCandidate(config);
-    console.groupEnd();
-  });
-
-  signalingSocket.on("starting", () => {
-    console.group("Starting Event!");
-    const startButton = document.querySelector('button[id="Start"]');
-    startButton.remove();
     console.groupEnd();
   });
 }
@@ -309,5 +292,3 @@ function getPeerIP() {
     };
   });
 }
-
-init(); // Start the initialization process

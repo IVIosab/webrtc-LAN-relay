@@ -72,8 +72,6 @@ io.sockets.on("connection", (socket) => {
     handleRequestInformation(socket);
   }, 1000);
 
-  socket.on("startSimulation", handleStartSimulation);
-
   socket.on("relaySessionDescription", (config) =>
     handleSessionDescription(socket, config)
   );
@@ -104,14 +102,6 @@ function handleRequestInformation(socket) {
   socket.emit("information", {
     idToInfo: idToInfo,
   });
-}
-
-function handleStartSimulation() {
-  const socks = Object.keys(sockets);
-  for (let i = 0; i < socks.length; i++) {
-    sockets[socks[i]].emit("starting");
-  }
-  connectPlanned();
 }
 
 function connectPlanned() {
