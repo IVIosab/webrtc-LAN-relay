@@ -26,14 +26,6 @@ let idToInfo;
 /*** CLIENT ***/
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
-  const getInfoButton = document.getElementById("GetInfo");
-  getInfoButton.addEventListener("click", () => {
-    console.group("Get Click");
-    getInformation();
-    console.groupEnd();
-    getInfoButton.remove();
-  });
-
   const startButton = document.querySelector('button[id="Start"]');
   startButton.addEventListener("click", () => {
     console.group("Start Click");
@@ -68,11 +60,6 @@ function sendInformation() {
   });
 }
 
-function getInformation() {
-  console.log("Emitting requestInfomration...");
-  signalingSocket.emit("requestInformation");
-}
-
 async function init() {
   await getPeerIP();
   setupSignalingSocket();
@@ -97,6 +84,7 @@ function setupSignalingSocket() {
 
   signalingSocket.on("information", (config) => {
     console.group("information Event!");
+    console.log(config.idToInfo);
     handleInformation(config);
     console.groupEnd();
   });

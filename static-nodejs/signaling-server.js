@@ -68,7 +68,10 @@ io.sockets.on("connection", (socket) => {
     handleSendInformation(socket, config)
   );
 
-  socket.on("requestInformation", () => handleRequestInformation(socket));
+  setInterval(() => {
+    handleRequestInformation(socket);
+  }, 1000);
+
   socket.on("startSimulation", handleStartSimulation);
   socket.on("stopSimulation", handleStopSimulation);
 
