@@ -39,6 +39,7 @@ function sendInformation() {
 }
 
 async function init() {
+  await setupLocalMedia();
   await getPeerIP();
   setupSignalingSocket();
 }
@@ -56,7 +57,6 @@ function setupSignalingSocket() {
     console.group("clientID Event!");
     handleClientID(config);
     console.groupEnd();
-    setupLocalMedia();
     sendInformation();
   });
 
@@ -190,14 +190,17 @@ function handleInformation(config) {
   }
 }
 
-async function setupLocalMedia() {
+function setupLocalMedia() {
   if (localMediaStream) return;
-  await navigator.mediaDevices
-    .getUserMedia({ audio: true, video: true })
-    .then((stream) => {
-      localMediaStream = stream;
-      createStreamCard(myID, myIP, false, stream);
-    });
+  return new Promise((resolve, reject) => {
+    navigator.mediaDevices
+      .getUserMedia({ audio: true, video: true })
+      .then((stream) => {
+        localMediaStream = stream;
+        createStreamCard(myID, myIP, false, stream);
+        resolve();
+      });
+  });
 }
 
 function createStreamCard(cardID, cardIP, cardIsLeader, stream) {
