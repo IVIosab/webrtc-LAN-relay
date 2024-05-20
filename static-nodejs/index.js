@@ -27,6 +27,13 @@ let idToInfo;
 /**************/
 document.addEventListener("DOMContentLoaded", () => {
   init();
+
+  let relayButton = document.getElementById("relay-button");
+  relayButton.addEventListener("click", () => {
+    relayButton.disabled = true;
+    relayButton.classList.add("disabled");
+    signalingSocket.emit("initiateRelay");
+  });
 });
 
 function sendInformation() {
@@ -67,6 +74,13 @@ function setupSignalingSocket() {
   signalingSocket.on("connectToPeer", (config) => {
     console.group("connectToPeer Event!");
     connectToPeer(config);
+    console.groupEnd();
+  });
+
+  signalingSocket.on("stopConnection", (config) => {
+    console.group("stopConnection Event!");
+    console.log("config: ", config);
+    stopConnection(config);
     console.groupEnd();
   });
 
@@ -162,6 +176,17 @@ function handleIceCandidate(config) {
   peers[config.peer_id].addIceCandidate(
     new RTCIceCandidate(config.ice_candidate)
   );
+}
+
+function stopConnection(config) {
+  let peer_id = config.peer_id;
+  if (peer_id in peers) {
+    peers[peer_id].close();
+    delete peers[peer_id];
+    let streamCard = document.getElementById(`streamCard-${peer_id}`);
+    streamCard.remove();
+    console.log("Closed connection to peer: ", peer_id);
+  }
 }
 
 function handleClientID(config) {

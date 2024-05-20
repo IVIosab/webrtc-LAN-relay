@@ -78,6 +78,8 @@ io.sockets.on("connection", (socket) => {
   socket.on("relayICECandidate", (config) =>
     handleIceCandidate(socket, config)
   );
+
+  socket.on("initiateRelay", () => handleInitiateRelay(socket));
 });
 
 function handleSendInformation(socket, config) {
@@ -112,18 +114,21 @@ function connectPlanned() {
       if (
         plannedConnections[ids1[i]][ids2[j]] &&
         plannedConnections[ids2[j]][ids1[i]] &&
-        establishedConnections[ids1[i]][ids2[j]] === undefined &&
-        establishedConnections[ids2[j]][ids1[i]] === undefined
+        establishedConnections[ids1[i]][ids2[j]] !== true &&
+        establishedConnections[ids2[j]][ids1[i]] !== true
       ) {
         biConnect(ids1[i], ids2[j]);
         establishedConnections[ids1[i]][ids2[j]] = true;
         establishedConnections[ids2[j]][ids1[i]] = true;
+        plannedConnections[ids1[i]][ids2[j]] = false;
+        plannedConnections[ids2[j]][ids1[i]] = false;
       } else if (
         plannedConnections[ids1[i]][ids2[j]] &&
-        establishedConnections[ids1[i]][ids2[j]] === undefined
+        establishedConnections[ids1[i]][ids2[j]] !== true
       ) {
         uniConnect(ids1[i], ids2[j]);
         establishedConnections[ids1[i]][ids2[j]] = true;
+        plannedConnections[ids1[i]][ids2[j]] = false;
       }
     }
   }
@@ -208,5 +213,40 @@ function handleIceCandidate(socket, config) {
       peer_id: socket.id,
       ice_candidate: ice_candidate,
     });
+  }
+}
+
+function handleInitiateRelay(socket) {
+  let ids = Object.keys(idToInfo);
+  for (let i = 0; i < ids.length; i++) {
+    let ip = idToInfo[ids[i]][1];
+    for (let j = i + 1; j < ids.length; j++) {
+      let ip2 = idToInfo[ids[j]][1];
+      if (
+        !(leaders[ip] === ids[i] && leaders[ip2] === ids[j]) &&
+        !(ip === ip2)
+      ) {
+        if (establishedConnections[ids[i]][ids[j]] === true) {
+          stopConnection(ids[i], ids[j]);
+        }
+        if (establishedConnections[ids[j]][ids[i]] === true) {
+          stopConnection(ids[j], ids[i]);
+        }
+      }
+    }
+  }
+  connectPlanned();
+}
+
+function stopConnection(id1, id2) {
+  sockets[id1].emit("stopConnection", {
+    peer_id: id2,
+  });
+  sockets[id2].emit("stopConnection", {
+    peer_id: id1,
+  });
+  establishedConnections[id1][id2] = false;
+  if (leaders[idToInfo[id2][1]] === id2) {
+    handleUniConnection(id1, id2);
   }
 }
