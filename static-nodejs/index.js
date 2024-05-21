@@ -13,6 +13,8 @@ const ICE_SERVERS = [
 /***************/
 /*** STORAGE ***/
 /***************/
+let RELAY = false;
+
 let signalingSocket = null;
 
 let localMediaStream = null;
@@ -20,6 +22,7 @@ let myID = "";
 let myIP = "";
 
 let peers = {};
+let streams = {};
 let idToInfo;
 
 /**************/
@@ -95,6 +98,11 @@ function setupSignalingSocket() {
     handleIceCandidate(config);
     console.groupEnd();
   });
+
+  signalingSocket.on("relay", () => {
+    console.log("Relaying...");
+    handleRelay();
+  });
 }
 
 function connectToPeer(config) {
@@ -111,7 +119,11 @@ function connectToPeer(config) {
   }
 
   peerConnection.onnegotiationneeded = (event) => {
-    handlePeerNegotiation(peer_id, peerConnection, should_create_offer);
+    if (RELAY) {
+      handlePeerNegotiation(peer_id, peerConnection, true);
+    } else {
+      handlePeerNegotiation(peer_id, peerConnection, should_create_offer);
+    }
   };
 
   peerConnection.onicecandidate = (event) => {
@@ -120,6 +132,12 @@ function connectToPeer(config) {
 
   peerConnection.ontrack = (event) => {
     handlePeerTrack(peer_id, event);
+  };
+
+  peerConnection.onconnectionstatechange = (event) => {
+    if (event.target.connectionState === "connected") {
+      signalingSocket.emit("connectionEstablished");
+    }
   };
 }
 
@@ -183,6 +201,7 @@ function stopConnection(config) {
   if (peer_id in peers) {
     peers[peer_id].close();
     delete peers[peer_id];
+    delete streams[peer_id];
     let streamCard = document.getElementById(`streamCard-${peer_id}`);
     streamCard.remove();
     console.log("Closed connection to peer: ", peer_id);
@@ -229,6 +248,7 @@ function setupLocalMedia() {
 }
 
 function createStreamCard(cardID, cardIP, cardIsLeader, stream) {
+  streams[cardID] = stream;
   const container = document.getElementById("streamContainer");
 
   let StreamCard = document.createElement("div");
@@ -272,20 +292,45 @@ function createMediaElement() {
   return mediaElement;
 }
 
-function handleRelay(id, stream) {
+function handleRelay() {
+  let lanIDs = [];
   let ids = Object.keys(idToInfo);
-
   for (let i = 0; i < ids.length; i++) {
-    let info = idToInfo[ids[i]];
-    if (info[1] == myIP && info[0] !== myID) {
-      stream.getTracks().forEach((track) => {
-        console.log(info);
-        console.log(info[0]);
-        console.log(peers);
-        console.log(peers[info[0]]);
-        console.log(peers[ids[i]]);
-        peers[info[0]].addTrack(track, stream);
-      });
+    if (idToInfo[ids[i]][1] == myIP) {
+      lanIDs.push(ids[i]);
+    }
+  }
+
+  let streamsToRelay = [];
+  let streamsIds = Object.keys(streams);
+  for (let i = 0; i < streamsIds.length; i++) {
+    let dec = true;
+    for (let j = 0; j < lanIDs.length; j++) {
+      if (streamsIds[i] !== lanIDs[j] && streamsIds[i] !== "") {
+        continue;
+      } else {
+        dec = false;
+      }
+    }
+    if (dec) {
+      streamsToRelay.push(streams[streamsIds[i]]);
+    }
+  }
+
+  RELAY = true;
+
+  console.log(
+    `relaying ${streamsToRelay.length} streams to ${lanIDs.length - 1} peers`
+  );
+  for (let i = 0; i < lanIDs.length; i++) {
+    if (lanIDs[i] !== myID && lanIDs[i] !== "") {
+      for (let j = 0; j < streamsToRelay.length; j++) {
+        streamsToRelay[j].getTracks().forEach((track) => {
+          console.log(peers[lanIDs[i]]);
+          peers[lanIDs[i]].addTrack(track, streamsToRelay[j]);
+          console.log(peers[lanIDs[i]]);
+        });
+      }
     }
   }
 }

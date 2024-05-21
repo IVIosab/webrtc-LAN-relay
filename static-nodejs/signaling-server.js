@@ -24,6 +24,9 @@ const io = socketIO.listen(server);
 /*** STORAGE ***/
 /***************/
 let id = 1;
+let conns = 0;
+
+let mode = "normal";
 
 let sockets = {};
 let plannedConnections = {};
@@ -34,6 +37,8 @@ let peerToOrder = {};
 let idToInfo = {};
 
 let leaders = {};
+
+let ipToSize = {};
 
 /**************/
 /*** SERVER ***/
@@ -68,6 +73,41 @@ io.sockets.on("connection", (socket) => {
     handleSendInformation(socket, config)
   );
 
+  socket.on("connectionEstablished", () => {
+    conns++;
+    if (mode === "normal") {
+      if (conns === (id - 1) * (id - 2)) {
+        console.log("Normal Mode: All connections have been established");
+      } else {
+        console.log(
+          `Normal Mode: ${conns}/${
+            (id - 1) * (id - 2)
+          } connections have been established`
+        );
+      }
+    } else {
+      let ids = Object.keys(ipToSize);
+      let needed = ids.length * (ids.length - 1);
+
+      for (let i = 0; i < ids.length; i++) {
+        needed += ipToSize[ids[i]] * (ipToSize[ids[i]] - 1);
+        needed += (ipToSize[ids[i]] - 1) * (ids.length - 1) * 2;
+      }
+      if (conns === needed) {
+        console.log("Relay Mode: All connections have been established");
+        ids = Object.keys(leaders);
+        for (let i = 0; i < ids.length; i++) {
+          console.log(`Leader: ${ids[i]} (${leaders[ids[i]]})`);
+          sockets[leaders[ids[i]]].emit("relay");
+        }
+      } else {
+        console.log(
+          `Relay Mode: ${conns}/${needed} connections have been established`
+        );
+      }
+    }
+  });
+
   setInterval(() => {
     handleRequestInformation(socket);
   }, 1000);
@@ -87,7 +127,11 @@ function handleSendInformation(socket, config) {
   if (!(ip in leaders)) {
     leaders[ip] = socket.id;
   }
-
+  if (!(ip in ipToSize)) {
+    ipToSize[ip] = 1;
+  } else {
+    ipToSize[ip] += 1;
+  }
   if (!(socket.id in idToInfo)) {
     let ids = Object.keys(idToInfo);
     for (let i = 0; i < ids.length; i++) {
@@ -217,6 +261,7 @@ function handleIceCandidate(socket, config) {
 }
 
 function handleInitiateRelay(socket) {
+  mode = "relay";
   let ids = Object.keys(idToInfo);
   for (let i = 0; i < ids.length; i++) {
     let ip = idToInfo[ids[i]][1];
@@ -228,9 +273,10 @@ function handleInitiateRelay(socket) {
       ) {
         if (establishedConnections[ids[i]][ids[j]] === true) {
           stopConnection(ids[i], ids[j]);
-        }
-        if (establishedConnections[ids[j]][ids[i]] === true) {
           stopConnection(ids[j], ids[i]);
+        } else if (establishedConnections[ids[j]][ids[i]] === true) {
+          stopConnection(ids[j], ids[i]);
+          stopConnection(ids[i], ids[j]);
         }
       }
     }
@@ -239,11 +285,9 @@ function handleInitiateRelay(socket) {
 }
 
 function stopConnection(id1, id2) {
+  conns--;
   sockets[id1].emit("stopConnection", {
     peer_id: id2,
-  });
-  sockets[id2].emit("stopConnection", {
-    peer_id: id1,
   });
   establishedConnections[id1][id2] = false;
   if (leaders[idToInfo[id2][1]] === id2) {
