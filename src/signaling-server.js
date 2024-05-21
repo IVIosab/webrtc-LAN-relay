@@ -56,11 +56,9 @@ function acceptNewClient(socket) {
   peerToOrder[socket.id] = `[node-${id}]`;
   id++;
 
-  console.group("Connection Accepted");
-  console.debug("ID: ", socket.id);
-  console.debug("Peer: ", peerToOrder[socket.id]);
-  console.groupEnd();
+  console.debug(`[Server] Client ${socket.id} Connected`);
 
+  console.debug("[Server] - Send - Client ID");
   socket.emit("clientID", {
     id: socket.id,
   });
@@ -74,41 +72,34 @@ io.sockets.on("connection", (socket) => {
   );
 
   socket.on("connectionEstablished", () => {
-    conns++;
-    if (mode === "normal") {
-      if (conns === (id - 1) * (id - 2)) {
-        console.log("Normal Mode: All connections have been established");
-      } else {
-        console.log(
-          `Normal Mode: ${conns}/${
-            (id - 1) * (id - 2)
-          } connections have been established`
-        );
+    let needed = (id - 1) * (id - 2);
+    if (mode === "relay") {
+      needed =
+        Object.keys(ipToSize).length * (Object.keys(ipToSize).length - 1);
+      for (let i = 0; i < Object.keys(ipToSize).length; i++) {
+        needed +=
+          ipToSize[Object.keys(ipToSize)[i]] *
+          (ipToSize[Object.keys(ipToSize)[i]] - 1);
+        needed +=
+          (ipToSize[Object.keys(ipToSize)[i]] - 1) *
+          (Object.keys(ipToSize).length - 1) *
+          2;
       }
-    } else {
-      let ids = Object.keys(ipToSize);
-      let needed = ids.length * (ids.length - 1);
+    }
 
-      for (let i = 0; i < ids.length; i++) {
-        needed += ipToSize[ids[i]] * (ipToSize[ids[i]] - 1);
-        needed += (ipToSize[ids[i]] - 1) * (ids.length - 1) * 2;
-      }
-      if (conns === needed) {
-        console.log("Relay Mode: All connections have been established");
-        ids = Object.keys(leaders);
-        for (let i = 0; i < ids.length; i++) {
-          console.log(`Leader: ${ids[i]} (${leaders[ids[i]]})`);
-          sockets[leaders[ids[i]]].emit("relay");
-        }
-      } else {
-        console.log(
-          `Relay Mode: ${conns}/${needed} connections have been established`
-        );
+    conns++;
+
+    console.debug(`[Server] - Connection Established - ${conns}/${needed}`);
+
+    if (mode === "relay" && conns === needed) {
+      for (let i = 0; i < Object.keys(leaders).length; i++) {
+        sockets[leaders[Object.keys(leaders)[i]]].emit("relay");
       }
     }
   });
 
   setInterval(() => {
+    // console.debug(`[Server] - Send - Information`);
     handleRequestInformation(socket);
   }, 1000);
 
@@ -139,8 +130,6 @@ function handleSendInformation(socket, config) {
     }
     idToInfo[socket.id] = [socket.id, ip, leaders[ip] === socket.id];
   }
-  console.log("info", idToInfo);
-  console.log("planned", plannedConnections);
   connectPlanned();
 }
 

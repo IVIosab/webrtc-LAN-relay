@@ -2,13 +2,7 @@ const SIGNALING_SERVER = `${location.protocol}//${location.hostname}${
   location.port ? `:${location.port}` : ""
 }`;
 const PORT = 8080;
-const ICE_SERVERS = [
-  { url: "stun:stun.l.google.com:19302" },
-  // { url: "stun:stun1.l.google.com:19302" },
-  // { url: "stun:stun2.l.google.com:19302" },
-  // { url: "stun:stun3.l.google.com:19302" },
-  // { url: "stun:stun4.l.google.com:19302" },
-];
+const ICE_SERVERS = [{ url: "stun:stun.l.google.com:19302" }];
 
 /***************/
 /*** STORAGE ***/
@@ -35,22 +29,17 @@ document.addEventListener("DOMContentLoaded", () => {
   relayButton.addEventListener("click", () => {
     relayButton.disabled = true;
     relayButton.classList.add("disabled");
+    console.debug("[Client] - Send - Relay Request");
     signalingSocket.emit("initiateRelay");
   });
 });
 
-function sendInformation() {
-  console.log("Emitting sendInformation...", {
-    ip: myIP,
-  });
-  signalingSocket.emit("sendInformation", {
-    ip: myIP,
-  });
-}
-
 async function init() {
+  console.debug("[Client] Setup Local Media");
   await setupLocalMedia();
+  console.debug("[Client] Setup Peer IP");
   await getPeerIP();
+  console.debug("[Client] Setup Signaling Socket");
   setupSignalingSocket();
 }
 
@@ -58,49 +47,51 @@ function setupSignalingSocket() {
   signalingSocket = io(SIGNALING_SERVER);
 
   signalingSocket.on("connect", () => {
-    console.group("connect Event!");
-    console.log("Connected to signaling server");
-    console.groupEnd();
+    console.debug("[Client] - Recieve - Socket Connection Confirmation");
   });
 
   signalingSocket.on("clientID", (config) => {
-    console.group("clientID Event!");
+    console.debug("[Client] - Recieve - Client ID");
     handleClientID(config);
-    console.groupEnd();
-    sendInformation();
+    console.debug(`[Client] - Send - IP(${myIP})`);
+    signalingSocket.emit("sendInformation", {
+      ip: myIP,
+    });
   });
 
   signalingSocket.on("information", (config) => {
+    // console.debug("[Client] - Recieve - Information");
     handleInformation(config);
   });
 
   signalingSocket.on("connectToPeer", (config) => {
-    console.group("connectToPeer Event!");
+    console.debug(
+      `[Client] - Recieve - Start ${
+        config.bi_connection ? "bi" : "uni"
+      }-connection with ${config.peer_id}`
+    );
     connectToPeer(config);
-    console.groupEnd();
   });
 
   signalingSocket.on("stopConnection", (config) => {
-    console.group("stopConnection Event!");
-    console.log("config: ", config);
+    console.debug(
+      `[Client] - Recieve - Stop Connection with ${config.peer_id}`
+    );
     stopConnection(config);
-    console.groupEnd();
   });
 
   signalingSocket.on("sessionDescription", (config) => {
-    console.group("sessionDescription Event!");
+    // console.debug("[Client] - Recieve - Session Description");
     handleSessionDescription(config);
-    console.groupEnd();
   });
 
   signalingSocket.on("iceCandidate", (config) => {
-    console.group("iceCandidate Event!");
+    // console.debug("[Client] - Recieve - Ice Candidate");
     handleIceCandidate(config);
-    console.groupEnd();
   });
 
   signalingSocket.on("relay", () => {
-    console.log("Relaying...");
+    console.debug("[Client] - Recieve - Relay request");
     handleRelay();
   });
 }
@@ -204,7 +195,6 @@ function stopConnection(config) {
     delete streams[peer_id];
     let streamCard = document.getElementById(`streamCard-${peer_id}`);
     streamCard.remove();
-    console.log("Closed connection to peer: ", peer_id);
   }
 }
 
@@ -230,6 +220,47 @@ function handleInformation(config) {
     if (streamCardIsLeader === idToInfo[ids[i]][2]) continue;
     else {
       streamCardIsLeader.innerText = idToInfo[ids[i]][2];
+    }
+  }
+}
+
+function handleRelay() {
+  let lanIDs = [];
+  let ids = Object.keys(idToInfo);
+  for (let i = 0; i < ids.length; i++) {
+    if (idToInfo[ids[i]][1] == myIP) {
+      lanIDs.push(ids[i]);
+    }
+  }
+
+  let streamsToRelay = [];
+  let streamsIds = Object.keys(streams);
+  for (let i = 0; i < streamsIds.length; i++) {
+    let dec = true;
+    for (let j = 0; j < lanIDs.length; j++) {
+      if (streamsIds[i] !== lanIDs[j] && streamsIds[i] !== "") {
+        continue;
+      } else {
+        dec = false;
+      }
+    }
+    if (dec) {
+      streamsToRelay.push(streams[streamsIds[i]]);
+    }
+  }
+
+  RELAY = true;
+
+  console.log(
+    `relaying ${streamsToRelay.length} streams to ${lanIDs.length - 1} peers`
+  );
+  for (let i = 0; i < lanIDs.length; i++) {
+    if (lanIDs[i] !== myID && lanIDs[i] !== "") {
+      for (let j = 0; j < streamsToRelay.length; j++) {
+        streamsToRelay[j].getTracks().forEach((track) => {
+          peers[lanIDs[i]].addTrack(track, streamsToRelay[j]);
+        });
+      }
     }
   }
 }
@@ -291,53 +322,6 @@ function createMediaElement() {
   mediaElement.controls = true;
   return mediaElement;
 }
-
-function handleRelay() {
-  let lanIDs = [];
-  let ids = Object.keys(idToInfo);
-  for (let i = 0; i < ids.length; i++) {
-    if (idToInfo[ids[i]][1] == myIP) {
-      lanIDs.push(ids[i]);
-    }
-  }
-
-  let streamsToRelay = [];
-  let streamsIds = Object.keys(streams);
-  for (let i = 0; i < streamsIds.length; i++) {
-    let dec = true;
-    for (let j = 0; j < lanIDs.length; j++) {
-      if (streamsIds[i] !== lanIDs[j] && streamsIds[i] !== "") {
-        continue;
-      } else {
-        dec = false;
-      }
-    }
-    if (dec) {
-      streamsToRelay.push(streams[streamsIds[i]]);
-    }
-  }
-
-  RELAY = true;
-
-  console.log(
-    `relaying ${streamsToRelay.length} streams to ${lanIDs.length - 1} peers`
-  );
-  for (let i = 0; i < lanIDs.length; i++) {
-    if (lanIDs[i] !== myID && lanIDs[i] !== "") {
-      for (let j = 0; j < streamsToRelay.length; j++) {
-        streamsToRelay[j].getTracks().forEach((track) => {
-          console.log(peers[lanIDs[i]]);
-          peers[lanIDs[i]].addTrack(track, streamsToRelay[j]);
-          console.log(peers[lanIDs[i]]);
-        });
-      }
-    }
-  }
-}
-
-/*************/
-/*** UTILS ***/
-/*************/
 
 function getPeerIP() {
   return new Promise((resolve, reject) => {
