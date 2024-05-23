@@ -250,6 +250,7 @@ function handleIceCandidate(socket, config) {
 }
 
 function handleInitiateRelay(socket) {
+  console.log(`[Server] - Initiate Relay`);
   mode = "relay";
   let ids = Object.keys(idToInfo);
   for (let i = 0; i < ids.length; i++) {
