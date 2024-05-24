@@ -244,7 +244,11 @@ function handleRelay() {
   let lanIDs = [];
   let ids = Object.keys(idToInfo);
   for (let i = 0; i < ids.length; i++) {
-    if (idToInfo[ids[i]][1] == myIP) {
+    let myLAN = myIP.split(".");
+    myLAN = myLAN[0] + "." + myLAN[1] + "." + myLAN[2];
+    let peerLAN = idToInfo[ids[i]][1].split(".");
+    peerLAN = peerLAN[0] + "." + peerLAN[1] + "." + peerLAN[2];
+    if (myLAN === peerLAN) {
       lanIDs.push(ids[i]);
     }
   }
