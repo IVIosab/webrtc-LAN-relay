@@ -207,19 +207,35 @@ function handleInformation(config) {
   idToInfo = config.idToInfo;
   let ids = Object.keys(idToInfo);
   for (let i = 0; i < ids.length; i++) {
-    let streamCard = document.getElementById(`streamCard-${ids[i]}`);
-    if (!streamCard) continue;
-    let streamCardIP = document.getElementById(`streamCard-${ids[i]}-ip`);
-    if (streamCardIP === idToInfo[ids[i]][1]) continue;
-    else {
-      streamCardIP.innerText = idToInfo[ids[i]][1];
-    }
-    let streamCardIsLeader = document.getElementById(
-      `streamCard-${ids[i]}-leader`
-    );
-    if (streamCardIsLeader === idToInfo[ids[i]][2]) continue;
-    else {
-      streamCardIsLeader.innerText = idToInfo[ids[i]][2];
+    if (idToInfo[ids[i]][0] == myID) {
+      let streamCard = document.getElementById(`streamCard-`);
+      if (streamCard) {
+        streamCard.setAttribute("id", `streamCard-${ids[i]}`);
+        let streamCardID = document.getElementById(`streamCard--id`);
+        streamCardID.setAttribute("id", `streamCard-${ids[i]}-id`);
+        streamCardID.innerText = idToInfo[ids[i]][0];
+        let streamCardIP = document.getElementById(`streamCard--ip`);
+        streamCardIP.setAttribute("id", `streamCard-${ids[i]}-ip`);
+        streamCardIP.innerText = idToInfo[ids[i]][1];
+        let streamCardIsLeader = document.getElementById(`streamCard--leader`);
+        streamCardIsLeader.setAttribute("id", `streamCard-${ids[i]}-leader`);
+        streamCardIsLeader.innerText = idToInfo[ids[i]][2];
+      }
+    } else {
+      let streamCard = document.getElementById(`streamCard-${ids[i]}`);
+      if (!streamCard) continue;
+      let streamCardIP = document.getElementById(`streamCard-${ids[i]}-ip`);
+      if (streamCardIP === idToInfo[ids[i]][1]) continue;
+      else {
+        streamCardIP.innerText = idToInfo[ids[i]][1];
+      }
+      let streamCardIsLeader = document.getElementById(
+        `streamCard-${ids[i]}-leader`
+      );
+      if (streamCardIsLeader === idToInfo[ids[i]][2]) continue;
+      else {
+        streamCardIsLeader.innerText = idToInfo[ids[i]][2];
+      }
     }
   }
 }
@@ -272,7 +288,7 @@ function setupLocalMedia() {
       .getUserMedia({ audio: true, video: true })
       .then((stream) => {
         localMediaStream = stream;
-        createStreamCard(myID, myIP, false, stream);
+        createStreamCard("", "", false, stream);
         resolve();
       });
   });
