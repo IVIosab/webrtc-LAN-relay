@@ -13,8 +13,6 @@ def main(
     headless: bool,
     url: str,
     windows: int,
-    time_windows: int,
-    time_init: int,
     time_test: int,
 ):
 
@@ -47,40 +45,45 @@ def main(
                     By.XPATH, '//button[text()="Visit Site"]'
                 )
                 ngrok_button.click()
+                driver.implicitly_wait(5)
             except:
                 pass
-            print(
-                f"Session {i+1}/{windows} opened\t|\tWaiting {time_windows} seconds..."
-            )
-            time.sleep(time_windows)
 
-        print(f"All sessions opened\t|\tWaiting {time_init} seconds...")
-        time.sleep(time_init)
         print("Initialization Finished")
+
+        if relay:
+            driver.switch_to.window(driver.window_handles[1])
+            driver.implicitly_wait(5)
+
+            relay_button = driver.find_element(By.XPATH, '//button[text()="Relay"]')
+            relay_button.click()
+            driver.implicitly_wait(5)
 
         driver.switch_to.window(driver.window_handles[0])
         driver.implicitly_wait(5)
-        try:
-            xpath_query = "//div[starts-with(normalize-space(), 'Caller process id:')]"
-            divs = driver.find_elements(By.XPATH, xpath_query)
-        except:
-            driver.quit()
-            print("No Caller process id found")
-            return
-        pids = [div.text.split(" ")[-1] for div in divs]
-        print("Process IDs collected")
-        print(pids)
 
-        driver.switch_to.window(driver.window_handles[1])
+        time.sleep(60)
+        driver.refresh()
         driver.implicitly_wait(5)
 
-        print("Starting test [No relay]")
+        idx = 1
+        while True:
+            try:
+                span = driver.find_element(By.XPATH, f"/html/body/p/div[1]/span[{idx}]")
+                span.click()
+                driver.implicitly_wait(5)
+                idx += 1
+            except:
+                break
+
         time.sleep(time_test)
-        if relay:
-            relay_button = driver.find_element(By.XPATH, '//button[text()="Relay"]')
-            relay_button.click()
-        print("Starting test [Relay]")
-        time.sleep(time_test)
+
+        x = driver.find_element(By.XPATH, "/html/body/p/details[1]")
+        x.click()
+        x = driver.find_element(By.XPATH, "/html/body/p/details[1]/div/div/a/button")
+        x.click()
+
+        time.sleep(10)
     finally:
         print("Closing Driver")
         driver.quit()
@@ -92,16 +95,12 @@ if __name__ == "__main__":
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--url", action="store")
     parser.add_argument("--windows", action="store", default=2)
-    parser.add_argument("--time_windows", action="store", default=10)
-    parser.add_argument("--time_init", action="store", default=15)
-    parser.add_argument("--time_test", action="store", default=120)
+    parser.add_argument("--time_test", action="store", default=300)
     args = parser.parse_args()
     main(
         args.relay,
         args.headless,
         args.url,
         int(args.windows),
-        int(args.time_windows),
-        int(args.time_init),
         int(args.time_test),
     )
