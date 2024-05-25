@@ -1,0 +1,4 @@
+psutil==5.9.8
+selenium==4.21.0
+webdriver-manager==4.0.1
+matplotlib==3.9.0
