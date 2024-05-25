@@ -257,9 +257,13 @@ function handleInitiateRelay(socket) {
     let ip = idToInfo[ids[i]][1];
     for (let j = i + 1; j < ids.length; j++) {
       let ip2 = idToInfo[ids[j]][1];
+      ip_net_id =
+        ip.split(".")[0] + "." + ip.split(".")[1] + "." + ip.split(".")[2];
+      ip2_net_id =
+        ip2.split(".")[0] + "." + ip2.split(".")[1] + "." + ip2.split(".")[2];
       if (
         !(leaders[ip] === ids[i] && leaders[ip2] === ids[j]) &&
-        !(ip === ip2)
+        !(ip_net_id === ip2_net_id)
       ) {
         if (establishedConnections[ids[i]][ids[j]] === true) {
           stopConnection(ids[i], ids[j]);
