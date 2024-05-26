@@ -41,11 +41,11 @@ def parse_files(files):
         for peer_connection_id, peer_connection_data in data["PeerConnections"].items():
             parsed_data[peer_connection_id] = {
                 "bytes_sent": [],
-                "bytes_sent_startTime": "",
-                "bytes_sent_endTime": "",
+                "bytes_sent_in_bits/s": [],
                 "bytes_received": [],
-                "bytes_received_startTime": "",
-                "bytes_received_endTime": "",
+                "bytes_received_in_bits/s": [],
+                "startTime": "",
+                "endTime": "",
             }
             for stats_id, stats_data in peer_connection_data["stats"].items():
                 if stats_data["statsType"] == "transport":
@@ -55,23 +55,29 @@ def parse_files(files):
                         parsed_data[peer_connection_id]["bytes_received"].extend(
                             json.loads(stats_data["values"])
                         )
-                        parsed_data[peer_connection_id]["bytes_received_startTime"] = (
-                            stats_data["startTime"]
-                        )
-                        parsed_data[peer_connection_id]["bytes_received_endTime"] = (
-                            stats_data["endTime"]
-                        )
+                        parsed_data[peer_connection_id]["startTime"] = stats_data[
+                            "startTime"
+                        ]
+                        parsed_data[peer_connection_id]["endTime"] = stats_data[
+                            "endTime"
+                        ]
                     if "bytesSent" in stats_id and "bits" not in stats_id:
                         if stats_data["startTime"] == stats_data["endTime"]:
                             continue
                         parsed_data[peer_connection_id]["bytes_sent"].extend(
                             json.loads(stats_data["values"])
                         )
-                        parsed_data[peer_connection_id]["bytes_sent_startTime"] = (
-                            stats_data["startTime"]
-                        )
-                        parsed_data[peer_connection_id]["bytes_sent_endTime"] = (
-                            stats_data["endTime"]
+                    if "bytesReceived_in_bits/s" in stats_id:
+                        if stats_data["startTime"] == stats_data["endTime"]:
+                            continue
+                        parsed_data[peer_connection_id][
+                            "bytes_received_in_bits/s"
+                        ].extend(json.loads(stats_data["values"]))
+                    if "bytesSent_in_bits/s" in stats_id:
+                        if stats_data["startTime"] == stats_data["endTime"]:
+                            continue
+                        parsed_data[peer_connection_id]["bytes_sent_in_bits/s"].extend(
+                            json.loads(stats_data["values"])
                         )
 
         parsed_files_data[key] = parsed_data
@@ -87,24 +93,24 @@ def save_files(parsed_data):
             csvwriter.writerow(
                 [
                     "PeerConnectionID",
-                    "BytesSentStartTime",
-                    "BytesSentEndTime",
-                    "BytesSentValues",
-                    "BytesReceivedStartTime",
-                    "BytesReceivedEndTime",
-                    "BytesReceivedValues",
+                    "StartTime",
+                    "EndTime",
+                    "BytesSent",
+                    "BytesSent_in_bits/s",
+                    "BytesReceived",
+                    "BytesReceived_in_bits/s",
                 ]
             )
             for peer_connection_id, data in value.items():
                 csvwriter.writerow(
                     [
                         peer_connection_id,
-                        data["bytes_sent_startTime"],
-                        data["bytes_sent_endTime"],
+                        data["startTime"],
+                        data["endTime"],
                         data["bytes_sent"],
-                        data["bytes_received_startTime"],
-                        data["bytes_received_endTime"],
+                        data["bytes_sent_in_bits/s"],
                         data["bytes_received"],
+                        data["bytes_received_in_bits/s"],
                     ]
                 )
 
