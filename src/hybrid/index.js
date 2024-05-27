@@ -35,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function init() {
+  console.debug(`[Client] Signaling server: ${SIGNALING_SERVER}`);
   console.debug("[Client] Setup Local Media");
   await setupLocalMedia();
   console.debug("[Client] Setup Peer IP");
