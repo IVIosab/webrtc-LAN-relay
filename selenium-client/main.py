@@ -100,7 +100,7 @@ if __name__ == "__main__":
     main(
         args.relay,
         args.headless,
-        f"https://{args.url}-188-130-155-182.ngrok-free.app/",
+        f"https://{args.url}.ngrok-free.app/",
         int(args.windows),
         int(args.time),
     )
