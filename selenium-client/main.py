@@ -95,12 +95,12 @@ if __name__ == "__main__":
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--url", action="store")
     parser.add_argument("--windows", action="store", default=2)
-    parser.add_argument("--time_test", action="store", default=300)
+    parser.add_argument("--time", action="store", default=300)
     args = parser.parse_args()
     main(
         args.relay,
         args.headless,
         f"https://{args.url}-188-130-155-182.ngrok-free.app/",
         int(args.windows),
-        int(args.time_test),
+        int(args.time),
     )
