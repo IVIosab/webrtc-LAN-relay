@@ -85,7 +85,7 @@ def plot_data(data_dict, output_file):
     plt.close()
 
 
-def main(input_dir="parsed_input", output_dir="figures"):
+def main(input_dir="final_data", output_dir="figures"):
     for file_name in os.listdir(input_dir):
         if file_name.endswith(".csv"):
             data_dict = read_csv(os.path.join(input_dir, file_name))
