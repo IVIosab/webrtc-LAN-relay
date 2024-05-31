@@ -290,7 +290,14 @@ function setupLocalMedia() {
   if (localMediaStream) return;
   return new Promise((resolve, reject) => {
     navigator.mediaDevices
-      .getUserMedia({ audio: true, video: true })
+      .getUserMedia({
+        audio: true,
+        video: {
+          width: { max: 320 },
+          height: { max: 240 },
+          frameRate: { max: 15 },
+        },
+      })
       .then((stream) => {
         localMediaStream = stream;
         createStreamCard("", "", false, stream);
