@@ -23,34 +23,15 @@ def fill_list(list, size):
 
 
 def data_to_dict(data):
-    metrics = [
-        "T01-bytesSent",
-        "T01-bytesReceived",
-        "T01-[bytesSent_in_bits/s]",
-        "T01-[bytesReceived_in_bits/s]",
-    ]
-    metric_map = {
-        "T01-bytesSent": "bytes_sent",
-        "T01-bytesReceived": "bytes_received",
-        "T01-[bytesSent_in_bits/s]": "bytes_sent_in_bits/s",
-        "T01-[bytesReceived_in_bits/s]": "bytes_received_in_bits/s",
-    }
     data_dict = {}
     for peer_connection_id, peer_connection_data in data["PeerConnections"].items():
-        data_dict[peer_connection_id] = {
-            "bytes_sent": [],
-            "bytes_sent_in_bits/s": [],
-            "bytes_received": [],
-            "bytes_received_in_bits/s": [],
-        }
+        data_dict[peer_connection_id] = {}
         for stats_id, stats_data in peer_connection_data["stats"].items():
-            if stats_data["statsType"] == "transport":
+            if stats_data["statsType"] == "remote-inbound-rtp":
                 if stats_data["startTime"] == stats_data["endTime"]:
                     continue
-                if stats_id in metrics:
-                    data_dict[peer_connection_id][metric_map[stats_id]] = eval(
-                        stats_data["values"]
-                    )
+                if "-roundTripTime" in stats_id and "Measurements" not in stats_id:
+                    data_dict[peer_connection_id][stats_id] = eval(stats_data["values"])
 
     return data_dict
 
@@ -112,13 +93,53 @@ def save_file(data_dict, file):
     return
 
 
+def save_file_RTT(data_dict, file):
+    csv_file_path = f"parsed_input/{file}.csv"
+    with open(csv_file_path, "w", newline="") as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(
+            [
+                "Peer",
+                "RTT",
+            ]
+        )
+        for peer, data in data_dict.items():
+            for metric, metric_data in data.items():
+                if "roundTripTime" in metric:
+                    csvwriter.writerow(
+                        [
+                            peer + "_" + metric.split("-")[0],
+                            metric_data,
+                        ]
+                    )
+        print(f"File {file} saved")
+    return
+
+
+def clean_RTT(data_dict):
+    length = get_max_length(data_dict)
+    clean_data_dict = {}
+    for peer, peer_data in data_dict.items():
+        clean_data_dict[peer] = {}
+        for metric, metric_data in peer_data.items():
+            if "roundTripTime" in metric:
+                clean_data_dict[peer][metric] = fill_list(metric_data, length)
+    return clean_data_dict
+
+
 def parse_file(file):
     with open(f"raw_input/{file}.txt", "r") as f:
         data = json.load(f)
         data_dict = data_to_dict(data)
-        max_length = get_max_length(data_dict)
-        clean_data = clean_data_dict(data_dict, max_length)
-        save_file(clean_data, file)
+        # print("-------------------")
+        # for peer, peer_data in data_dict.items():
+        #     print(peer, peer_data.keys())
+        # print("-------------------")
+        clean_data = clean_RTT(data_dict)
+        # print(clean_data)
+        # max_length = get_max_length(data_dict)
+        # clean_data = clean_data_dict(data_dict, max_length)
+        save_file_RTT(clean_data, file)
 
 
 def main():
